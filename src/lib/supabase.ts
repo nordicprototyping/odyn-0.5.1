@@ -4,7 +4,20 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables');
+  console.error('Missing Supabase environment variables:', {
+    url: supabaseUrl ? 'Present' : 'Missing',
+    key: supabaseAnonKey ? 'Present' : 'Missing'
+  });
+  throw new Error('Missing Supabase environment variables. Please check your .env file.');
+}
+
+// Validate that we're not using placeholder values
+if (supabaseUrl.includes('your-project-ref') || supabaseUrl.includes('your_supabase_project_url')) {
+  throw new Error('Please update VITE_SUPABASE_URL in your .env file with your actual Supabase project URL');
+}
+
+if (supabaseAnonKey.includes('your_supabase_anon_key')) {
+  throw new Error('Please update VITE_SUPABASE_ANON_KEY in your .env file with your actual Supabase anon key');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
