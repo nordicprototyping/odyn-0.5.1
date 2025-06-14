@@ -74,6 +74,26 @@ async function logTokenUsage(organizationId: string, userId: string | null, oper
   }
 }
 
+// Helper function to extract valid JSON from potentially malformed response
+function extractJsonFromString(text: string): string {
+  try {
+    // First, try to find JSON between curly braces
+    const jsonRegex = /{[\s\S]*}/;
+    const match = text.match(jsonRegex);
+    
+    if (match && match[0]) {
+      // Try to parse it to validate it's actually JSON
+      JSON.parse(match[0]);
+      return match[0];
+    }
+    
+    throw new Error('No valid JSON object found in the response');
+  } catch (error) {
+    console.error('Error extracting JSON:', error);
+    throw new Error('Failed to extract valid JSON from response');
+  }
+}
+
 // Helper function to call Chutes AI API
 async function callChutesAI(prompt: string, systemPrompt: string): Promise<any> {
   try {
@@ -193,17 +213,22 @@ async function scoreAssetRisk(assetData: any, organizationId: string, userId: st
       await logTokenUsage(organizationId, userId, 'asset', result.usage.total_tokens);
     }
     
-    // Parse the response
-    let riskAssessment;
+    // Extract JSON from the response
+    let jsonContent;
     try {
-      riskAssessment = JSON.parse(result.content);
+      // First try direct parsing
+      jsonContent = JSON.parse(result.content);
     } catch (parseError) {
       console.error('JSON parse error in asset risk assessment:', parseError);
       console.error('Raw content:', result.content);
-      throw new Error('Invalid JSON response from AI service');
+      
+      // If direct parsing fails, try to extract JSON using regex
+      const extractedJson = extractJsonFromString(result.content);
+      jsonContent = JSON.parse(extractedJson);
+      console.log('Successfully extracted JSON from malformed response');
     }
     
-    return riskAssessment;
+    return jsonContent;
   } catch (error) {
     console.error('Error in scoreAssetRisk:', error);
     
@@ -301,17 +326,22 @@ async function scorePersonnelRisk(personnelData: any, organizationId: string, us
       await logTokenUsage(organizationId, userId, 'personnel', result.usage.total_tokens);
     }
     
-    // Parse the response
-    let riskAssessment;
+    // Extract JSON from the response
+    let jsonContent;
     try {
-      riskAssessment = JSON.parse(result.content);
+      // First try direct parsing
+      jsonContent = JSON.parse(result.content);
     } catch (parseError) {
       console.error('JSON parse error in personnel risk assessment:', parseError);
       console.error('Raw content:', result.content);
-      throw new Error('Invalid JSON response from AI service');
+      
+      // If direct parsing fails, try to extract JSON using regex
+      const extractedJson = extractJsonFromString(result.content);
+      jsonContent = JSON.parse(extractedJson);
+      console.log('Successfully extracted JSON from malformed response');
     }
     
-    return riskAssessment;
+    return jsonContent;
   } catch (error) {
     console.error('Error in scorePersonnelRisk:', error);
     
@@ -404,17 +434,22 @@ async function scoreTravelRisk(travelData: any, organizationId: string, userId: 
       await logTokenUsage(organizationId, userId, 'travel', result.usage.total_tokens);
     }
     
-    // Parse the response
-    let riskAssessment;
+    // Extract JSON from the response
+    let jsonContent;
     try {
-      riskAssessment = JSON.parse(result.content);
+      // First try direct parsing
+      jsonContent = JSON.parse(result.content);
     } catch (parseError) {
       console.error('JSON parse error in travel risk assessment:', parseError);
       console.error('Raw content:', result.content);
-      throw new Error('Invalid JSON response from AI service');
+      
+      // If direct parsing fails, try to extract JSON using regex
+      const extractedJson = extractJsonFromString(result.content);
+      jsonContent = JSON.parse(extractedJson);
+      console.log('Successfully extracted JSON from malformed response');
     }
     
-    return riskAssessment;
+    return jsonContent;
   } catch (error) {
     console.error('Error in scoreTravelRisk:', error);
     
@@ -518,17 +553,22 @@ async function scoreOrganizationRisk(organizationId: string, userId: string | nu
       await logTokenUsage(organizationId, userId, 'organization', result.usage.total_tokens);
     }
     
-    // Parse the response
-    let riskAssessment;
+    // Extract JSON from the response
+    let jsonContent;
     try {
-      riskAssessment = JSON.parse(result.content);
+      // First try direct parsing
+      jsonContent = JSON.parse(result.content);
     } catch (parseError) {
       console.error('JSON parse error in organization risk assessment:', parseError);
       console.error('Raw content:', result.content);
-      throw new Error('Invalid JSON response from AI service');
+      
+      // If direct parsing fails, try to extract JSON using regex
+      const extractedJson = extractJsonFromString(result.content);
+      jsonContent = JSON.parse(extractedJson);
+      console.log('Successfully extracted JSON from malformed response');
     }
     
-    return riskAssessment;
+    return jsonContent;
   } catch (error) {
     console.error('Error in scoreOrganizationRisk:', error);
     
@@ -557,7 +597,7 @@ async function scoreOrganizationRisk(organizationId: string, userId: string | nu
 }
 
 // Main handler function
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
     return new Response(null, {
