@@ -124,7 +124,7 @@ async function scoreAssetRisk(assetData: any, organizationId: string, userId: st
     You should also provide component scores for different risk factors, a confidence score (0-100), 
     a trend assessment (improving, stable, or deteriorating), and predictions for future risk.
     
-    IMPORTANT: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
+    CRITICAL: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
     Do not use <think> tags or any other non-JSON content in your response.
     
     Format your response as valid JSON with the following structure:
@@ -194,7 +194,15 @@ async function scoreAssetRisk(assetData: any, organizationId: string, userId: st
     }
     
     // Parse the response
-    const riskAssessment = JSON.parse(result.content);
+    let riskAssessment;
+    try {
+      riskAssessment = JSON.parse(result.content);
+    } catch (parseError) {
+      console.error('JSON parse error in asset risk assessment:', parseError);
+      console.error('Raw content:', result.content);
+      throw new Error('Invalid JSON response from AI service');
+    }
+    
     return riskAssessment;
   } catch (error) {
     console.error('Error in scoreAssetRisk:', error);
@@ -233,7 +241,7 @@ async function scorePersonnelRisk(personnelData: any, organizationId: string, us
     You should also provide component scores for different risk factors, a confidence score (0-100), 
     a trend assessment (improving, stable, or deteriorating), and predictions for future risk.
     
-    IMPORTANT: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
+    CRITICAL: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
     Do not use <think> tags or any other non-JSON content in your response.
     
     Format your response as valid JSON with the following structure:
@@ -294,7 +302,15 @@ async function scorePersonnelRisk(personnelData: any, organizationId: string, us
     }
     
     // Parse the response
-    const riskAssessment = JSON.parse(result.content);
+    let riskAssessment;
+    try {
+      riskAssessment = JSON.parse(result.content);
+    } catch (parseError) {
+      console.error('JSON parse error in personnel risk assessment:', parseError);
+      console.error('Raw content:', result.content);
+      throw new Error('Invalid JSON response from AI service');
+    }
+    
     return riskAssessment;
   } catch (error) {
     console.error('Error in scorePersonnelRisk:', error);
@@ -333,7 +349,7 @@ async function scoreTravelRisk(travelData: any, organizationId: string, userId: 
     You should also provide component scores for different risk factors, a confidence score (0-100), 
     a trend assessment (improving, stable, or deteriorating), and specific recommendations.
     
-    IMPORTANT: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
+    CRITICAL: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
     Do not use <think> tags or any other non-JSON content in your response.
     
     Format your response as valid JSON with the following structure:
@@ -389,7 +405,15 @@ async function scoreTravelRisk(travelData: any, organizationId: string, userId: 
     }
     
     // Parse the response
-    const riskAssessment = JSON.parse(result.content);
+    let riskAssessment;
+    try {
+      riskAssessment = JSON.parse(result.content);
+    } catch (parseError) {
+      console.error('JSON parse error in travel risk assessment:', parseError);
+      console.error('Raw content:', result.content);
+      throw new Error('Invalid JSON response from AI service');
+    }
+    
     return riskAssessment;
   } catch (error) {
     console.error('Error in scoreTravelRisk:', error);
@@ -425,7 +449,7 @@ async function scoreOrganizationRisk(organizationId: string, userId: string | nu
     You should also provide component scores for different risk factors, a confidence score (0-100), 
     a trend assessment (improving, stable, or deteriorating), and specific recommendations.
     
-    IMPORTANT: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
+    CRITICAL: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
     Do not use <think> tags or any other non-JSON content in your response.
     
     Format your response as valid JSON with the following structure:
@@ -495,7 +519,15 @@ async function scoreOrganizationRisk(organizationId: string, userId: string | nu
     }
     
     // Parse the response
-    const riskAssessment = JSON.parse(result.content);
+    let riskAssessment;
+    try {
+      riskAssessment = JSON.parse(result.content);
+    } catch (parseError) {
+      console.error('JSON parse error in organization risk assessment:', parseError);
+      console.error('Raw content:', result.content);
+      throw new Error('Invalid JSON response from AI service');
+    }
+    
     return riskAssessment;
   } catch (error) {
     console.error('Error in scoreOrganizationRisk:', error);
