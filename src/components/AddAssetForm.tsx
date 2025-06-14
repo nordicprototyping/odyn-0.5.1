@@ -4,6 +4,7 @@ import { Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import MitigationSelector from './MitigationSelector';
 import { AppliedMitigation } from '../types/mitigation';
+import { aiService } from '../services/aiService';
 
 type AssetInsert = Database['public']['Tables']['assets']['Insert'];
 
@@ -15,6 +16,7 @@ interface AddAssetFormProps {
 const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiScoring, setAiScoring] = useState(false);
   const { profile } = useAuth();
   const [mitigations, setMitigations] = useState<AppliedMitigation[]>([]);
   
@@ -87,6 +89,49 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
         throw new Error('Please fill in all required fields');
       }
 
+      // Prepare asset data for AI risk scoring
+      const assetData = {
+        organization_id: profile?.organization_id || '',
+        name: formData.name,
+        type: formData.type,
+        location: formData.location,
+        status: formData.status,
+        personnel: formData.personnel,
+        security_systems: formData.security_systems,
+        compliance: formData.compliance,
+        incidents: formData.incidents,
+        responsible_officer: formData.responsible_officer
+      };
+
+      // Set AI scoring state to show loading indicator
+      setAiScoring(true);
+
+      // Call AI service to get risk score
+      let aiRiskScore = { ...formData.ai_risk_score };
+      
+      try {
+        const aiResult = await aiService.scoreAssetRisk(assetData);
+        
+        // Update risk score with AI-calculated values
+        aiRiskScore = {
+          overall: aiResult.score,
+          components: aiResult.components || aiRiskScore.components,
+          trend: (aiResult.trend as 'improving' | 'stable' | 'deteriorating') || 'stable',
+          lastUpdated: new Date().toISOString(),
+          confidence: aiResult.confidence,
+          predictions: aiResult.predictions || {
+            nextWeek: Math.round(aiResult.score * (1 + (Math.random() * 0.1 - 0.05))),
+            nextMonth: Math.round(aiResult.score * (1 + (Math.random() * 0.2 - 0.1)))
+          },
+          explanation: aiResult.explanation
+        };
+      } catch (aiError) {
+        console.error('Error getting AI risk score:', aiError);
+        // Continue with default risk score if AI scoring fails
+      } finally {
+        setAiScoring(false);
+      }
+      
       // Calculate effective risk score based on mitigations
       const totalRiskReduction = mitigations.reduce(
         (sum, mitigation) => sum + mitigation.applied_risk_reduction_score, 
@@ -94,18 +139,18 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
       );
       
       // Ensure risk score doesn't go below 0
-      const effectiveRiskScore = Math.max(0, formData.ai_risk_score.overall - totalRiskReduction);
+      const effectiveRiskScore = Math.max(0, aiRiskScore.overall - totalRiskReduction);
       
       // Update the risk score with the effective value
       const updatedRiskScore = {
-        ...formData.ai_risk_score,
+        ...aiRiskScore,
         overall: effectiveRiskScore,
         mitigationApplied: totalRiskReduction > 0,
-        originalScore: formData.ai_risk_score.overall,
+        originalScore: aiRiskScore.overall,
         totalRiskReduction
       };
 
-      const assetData: AssetInsert = {
+      const finalAssetData: AssetInsert = {
         organization_id: profile?.organization_id || '',
         name: formData.name,
         type: formData.type,
@@ -120,7 +165,7 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
         mitigations: mitigations.length > 0 ? mitigations : null
       };
 
-      await onSubmit(assetData);
+      await onSubmit(finalAssetData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add asset');
     } finally {
@@ -452,60 +497,6 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
             </div>
           </div>
 
-          {/* AI Risk Assessment */}
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-              <Brain className="w-5 h-5 text-purple-500" />
-              <span>AI Risk Assessment</span>
-            </h3>
-            <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Overall Risk Score (0-100)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={formData.ai_risk_score.overall}
-                    onChange={(e) => updateFormData('ai_risk_score.overall', parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Trend
-                  </label>
-                  <select
-                    value={formData.ai_risk_score.trend}
-                    onChange={(e) => updateFormData('ai_risk_score.trend', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="improving">Improving</option>
-                    <option value="stable">Stable</option>
-                    <option value="deteriorating">Deteriorating</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    AI Confidence (0-100)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={formData.ai_risk_score.confidence}
-                    onChange={(e) => updateFormData('ai_risk_score.confidence', parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Security Systems */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
@@ -621,13 +612,13 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || aiScoring}
               className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              {loading ? (
+              {loading || aiScoring ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Adding...</span>
+                  <span>{aiScoring ? 'Calculating AI Risk Score...' : 'Adding...'}</span>
                 </>
               ) : (
                 <>

@@ -4,6 +4,9 @@ import { Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { TimelineBlock } from '../types/timeline';
 import TimelineBuilder from './timeline/TimelineBuilder';
+import { aiService } from '../services/aiService';
+import MitigationSelector from './MitigationSelector';
+import { AppliedMitigation } from '../types/mitigation';
 
 type TravelPlanInsert = Database['public']['Tables']['travel_plans']['Insert'];
 
@@ -17,6 +20,8 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'basic' | 'itinerary' | 'risk'>('basic');
   const [timelineBlocks, setTimelineBlocks] = useState<TimelineBlock[]>([]);
+  const [aiScoring, setAiScoring] = useState(false);
+  const [mitigations, setMitigations] = useState<AppliedMitigation[]>([]);
   
   const { user, profile } = useAuth();
 
@@ -96,7 +101,65 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
         }
       };
 
-      const travelPlanData: TravelPlanInsert = {
+      // Prepare travel plan data for AI risk scoring
+      const travelPlanData = {
+        organization_id: profile?.organization_id || '',
+        traveler_name: updatedFormData.traveler_name,
+        traveler_employee_id: updatedFormData.traveler_employee_id,
+        traveler_department: updatedFormData.traveler_department,
+        traveler_clearance_level: updatedFormData.traveler_clearance_level,
+        destination: updatedFormData.destination,
+        origin: updatedFormData.origin,
+        departure_date: updatedFormData.departure_date,
+        return_date: updatedFormData.return_date,
+        purpose: updatedFormData.purpose,
+        itinerary: updatedFormData.itinerary
+      };
+
+      // Set AI scoring state to show loading indicator
+      setAiScoring(true);
+
+      // Call AI service to get risk score
+      let aiRiskAssessment = { ...formData.risk_assessment };
+      
+      try {
+        const aiResult = await aiService.scoreTravelRisk(travelPlanData);
+        
+        // Update risk assessment with AI-calculated values
+        aiRiskAssessment = {
+          overall: aiResult.score,
+          components: aiResult.components || aiRiskAssessment.components,
+          aiConfidence: aiResult.confidence,
+          recommendations: aiResult.recommendations || [],
+          explanation: aiResult.explanation,
+          trend: aiResult.trend || 'stable'
+        };
+      } catch (aiError) {
+        console.error('Error getting AI risk score:', aiError);
+        // Continue with default risk assessment if AI scoring fails
+      } finally {
+        setAiScoring(false);
+      }
+      
+      // Calculate effective risk score based on mitigations
+      const totalRiskReduction = mitigations.reduce(
+        (sum, mitigation) => sum + mitigation.applied_risk_reduction_score, 
+        0
+      );
+      
+      // Ensure risk score doesn't go below 0
+      const effectiveRiskScore = Math.max(0, aiRiskAssessment.overall - totalRiskReduction);
+      
+      // Update the risk assessment with the effective value
+      const updatedRiskAssessment = {
+        ...aiRiskAssessment,
+        overall: effectiveRiskScore,
+        mitigationApplied: totalRiskReduction > 0,
+        originalScore: aiRiskAssessment.overall,
+        totalRiskReduction
+      };
+
+      const travelPlanDataFinal: TravelPlanInsert = {
         organization_id: profile?.organization_id || '',
         traveler_user_id: user?.id || null,
         traveler_name: updatedFormData.traveler_name,
@@ -109,13 +172,14 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
         return_date: updatedFormData.return_date,
         purpose: updatedFormData.purpose,
         status: 'pending',
-        risk_assessment: updatedFormData.risk_assessment,
+        risk_assessment: updatedRiskAssessment,
         emergency_contacts: updatedFormData.emergency_contacts,
         itinerary: updatedFormData.itinerary,
-        documents: []
+        documents: [],
+        mitigations: mitigations.length > 0 ? mitigations : null
       };
 
-      await onSubmit(travelPlanData);
+      await onSubmit(travelPlanDataFinal);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit travel plan');
     } finally {
@@ -518,67 +582,14 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
                   <span>AI Risk Assessment</span>
                 </h3>
                 <div className="bg-purple-50 rounded-lg p-6 border border-purple-200">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Overall Risk Score (0-100)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={formData.risk_assessment.overall}
-                        onChange={(e) => updateFormData('risk_assessment.overall', parseInt(e.target.value) || 0)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        AI Confidence (0-100)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={formData.risk_assessment.aiConfidence}
-                        onChange={(e) => updateFormData('risk_assessment.aiConfidence', parseInt(e.target.value) || 0)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-
-                  <h4 className="text-md font-medium text-gray-800 mb-3">Risk Components</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-                    {Object.entries(formData.risk_assessment.components).map(([key, value]) => (
-                      <div key={key} className="bg-white rounded-lg p-3 border">
-                        <div className="text-xs font-medium text-gray-500 mb-1 capitalize">
-                          {key}
-                        </div>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={value}
-                          onChange={(e) => updateFormData(`risk_assessment.components.${key}`, parseInt(e.target.value) || 0)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-lg font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
-                          <div
-                            className={`h-1 rounded-full ${
-                              value <= 30 ? 'bg-green-500' :
-                              value <= 70 ? 'bg-yellow-500' :
-                              'bg-red-500'
-                            }`}
-                            style={{ width: `${value}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <h4 className="text-md font-medium text-gray-800 mb-3">AI Recommendations</h4>
-                  <div className="bg-white rounded-lg p-4 border">
+                  <p className="text-sm text-purple-700 mb-4">
+                    AI risk assessment will be automatically calculated when you submit the travel plan. 
+                    The assessment will consider factors such as destination, purpose, traveler profile, 
+                    and current geopolitical conditions.
+                  </p>
+                  
+                  <div className="bg-white rounded-lg p-4 border border-purple-200 mb-4">
+                    <h4 className="text-sm font-medium text-purple-800 mb-2">Recommendations</h4>
                     <div className="space-y-2">
                       {formData.risk_assessment.recommendations.map((rec, index) => (
                         <div key={index} className="flex items-center space-x-2">
@@ -615,6 +626,16 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
                         + Add Recommendation
                       </button>
                     </div>
+                  </div>
+                  
+                  <div className="mb-4">
+                    <p className="text-sm font-medium text-purple-800 mb-2">Mitigations</p>
+                    <MitigationSelector
+                      category="travel"
+                      selectedMitigations={mitigations}
+                      onMitigationsChange={setMitigations}
+                      disabled={loading}
+                    />
                   </div>
                 </div>
               </div>
@@ -655,13 +676,13 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || aiScoring}
                 className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
-                {loading ? (
+                {loading || aiScoring ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Submitting...</span>
+                    <span>{aiScoring ? 'Calculating AI Risk Score...' : 'Submitting...'}</span>
                   </>
                 ) : (
                   <>
