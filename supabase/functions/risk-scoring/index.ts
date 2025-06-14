@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.0";
 
+// Get the Chutes API token from environment variables
+const CHUTES_API_TOKEN = Deno.env.get("CHUTES_API_TOKEN") || "";
+
 // Define types for risk scoring requests
 interface RiskScoringRequest {
   type: 'asset' | 'personnel' | 'travel' | 'incident' | 'risk' | 'organization' | 'mitigation';
@@ -33,6 +36,41 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+// Function to call the Chutes LLM API
+async function invokeChutesLLM(prompt: string): Promise<any> {
+  try {
+    const response = await fetch("https://llm.chutes.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${CHUTES_API_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        "model": "deepseek-ai/DeepSeek-R1-0528",
+        "messages": [
+          {
+            "role": "user",
+            "content": prompt
+          }
+        ],
+        "stream": false,
+        "max_tokens": 1024,
+        "temperature": 0.7
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch (error) {
+    console.error("Error calling Chutes LLM API:", error);
+    throw error;
+  }
+}
+
 // Main function to handle risk scoring requests
 async function handleRiskScoring(req: RiskScoringRequest): Promise<RiskScoringResponse> {
   const { type, data, organizationId, userId } = req;
@@ -43,19 +81,19 @@ async function handleRiskScoring(req: RiskScoringRequest): Promise<RiskScoringRe
   // Call the appropriate risk scoring function based on type
   switch (type) {
     case 'asset':
-      return scoreAssetRisk(data);
+      return await scoreAssetRisk(data);
     case 'personnel':
-      return scorePersonnelRisk(data);
+      return await scorePersonnelRisk(data);
     case 'travel':
-      return scoreTravelRisk(data);
+      return await scoreTravelRisk(data);
     case 'incident':
-      return scoreIncidentRisk(data);
+      return await scoreIncidentRisk(data);
     case 'risk':
-      return evaluateRisk(data);
+      return await evaluateRisk(data);
     case 'organization':
-      return scoreOrganizationRisk(data);
+      return await scoreOrganizationRisk(data);
     case 'mitigation':
-      return evaluateMitigationEffectiveness(data);
+      return await evaluateMitigationEffectiveness(data);
     default:
       throw new Error(`Unsupported risk scoring type: ${type}`);
   }
@@ -124,14 +162,97 @@ function getTokensForOperation(operationType: string): number {
   }
 }
 
-// Mock implementation of asset risk scoring
-// In production, this would call an actual LLM API
-function scoreAssetRisk(assetData: any): RiskScoringResponse {
+// Implementation of asset risk scoring using LLM
+async function scoreAssetRisk(assetData: any): Promise<RiskScoringResponse> {
+  try {
+    // Extract relevant data for risk assessment
+    const { type, location, security_systems, personnel, incidents, name, status } = assetData;
+    
+    // Construct a detailed prompt for the LLM
+    const prompt = `
+      You are an AI security risk analyst. Analyze the security risk of the following asset and provide a comprehensive risk assessment.
+      
+      Asset Details:
+      - Name: ${name || 'Unknown'}
+      - Type: ${type || 'Unknown'}
+      - Location: ${location?.city || 'Unknown'}, ${location?.country || 'Unknown'}
+      - Current Status: ${status || 'Unknown'}
+      
+      Security Systems:
+      ${JSON.stringify(security_systems || {}, null, 2)}
+      
+      Personnel Information:
+      ${JSON.stringify(personnel || {}, null, 2)}
+      
+      Incident History:
+      ${JSON.stringify(incidents || {}, null, 2)}
+      
+      Please provide a risk assessment with the following information in JSON format:
+      1. An overall risk score from 0-100 (higher means more risk)
+      2. A breakdown of risk components (physicalSecurity, cyberSecurity, accessControl, environmentalRisk, personnelRisk) with scores from 0-100
+      3. A confidence score from 0-100 indicating how confident you are in this assessment
+      4. A detailed explanation of the risk assessment
+      5. 3-5 specific recommendations to improve security
+      6. A trend assessment (improving, stable, or deteriorating)
+      7. Risk score predictions for next week and next month
+      
+      Return ONLY the JSON object with these fields: score, components, confidence, explanation, recommendations, trend, predictions.
+    `;
+    
+    // Call the LLM API
+    const llmResponse = await invokeChutesLLM(prompt);
+    
+    // Parse the JSON response
+    let parsedResponse;
+    try {
+      // Find JSON in the response (in case the LLM adds extra text)
+      const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsedResponse = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No valid JSON found in LLM response");
+      }
+    } catch (parseError) {
+      console.error("Error parsing LLM response:", parseError);
+      console.log("Raw LLM response:", llmResponse);
+      throw new Error("Failed to parse LLM response");
+    }
+    
+    // Validate and format the response
+    return {
+      score: Math.round(Number(parsedResponse.score) || 50),
+      components: parsedResponse.components || {
+        physicalSecurity: 50,
+        cyberSecurity: 50,
+        accessControl: 50,
+        environmentalRisk: 50,
+        personnelRisk: 50
+      },
+      confidence: Math.round(Number(parsedResponse.confidence) || 80),
+      explanation: parsedResponse.explanation || "Risk assessment completed based on available data.",
+      recommendations: parsedResponse.recommendations || [
+        "Conduct a comprehensive security assessment",
+        "Update security protocols",
+        "Implement regular security training"
+      ],
+      trend: parsedResponse.trend || "stable",
+      predictions: parsedResponse.predictions || {
+        nextWeek: Math.round(Number(parsedResponse.score) || 50),
+        nextMonth: Math.round(Number(parsedResponse.score) || 50)
+      }
+    };
+  } catch (error) {
+    console.error("Error in asset risk scoring:", error);
+    
+    // Fallback to deterministic algorithm if LLM fails
+    return fallbackAssetRiskScoring(assetData);
+  }
+}
+
+// Fallback function for asset risk scoring if LLM fails
+function fallbackAssetRiskScoring(assetData: any): RiskScoringResponse {
   // Extract relevant data for risk assessment
   const { type, location, security_systems, personnel, incidents } = assetData;
-  
-  // This is where you would call your LLM with a prompt like:
-  // "Analyze the security risk of this asset based on its type, location, security systems, etc."
   
   // For now, we'll use a deterministic algorithm based on the data
   let baseScore = 0;
@@ -315,11 +436,95 @@ function determineTrend(incidents: any): 'improving' | 'stable' | 'deteriorating
   return 'stable';
 }
 
-// Mock implementation of personnel risk scoring
-function scorePersonnelRisk(personnelData: any): RiskScoringResponse {
-  // Similar implementation to asset risk scoring but tailored for personnel
-  // Would call LLM in production
-  
+// Implementation of personnel risk scoring using LLM
+async function scorePersonnelRisk(personnelData: any): Promise<RiskScoringResponse> {
+  try {
+    // Extract relevant data for risk assessment
+    const { 
+      name, category, clearance_level, current_location, 
+      travel_status, department, work_location, status 
+    } = personnelData;
+    
+    // Construct a detailed prompt for the LLM
+    const prompt = `
+      You are an AI security risk analyst. Analyze the security risk of the following personnel and provide a comprehensive risk assessment.
+      
+      Personnel Details:
+      - Name: ${name || 'Unknown'}
+      - Category: ${category || 'Unknown'}
+      - Department: ${department || 'Unknown'}
+      - Clearance Level: ${clearance_level || 'Unknown'}
+      - Current Location: ${current_location?.city || 'Unknown'}, ${current_location?.country || 'Unknown'}
+      - Work Location: ${work_location || 'Unknown'}
+      - Status: ${status || 'Unknown'}
+      
+      Travel Status:
+      ${JSON.stringify(travel_status || {}, null, 2)}
+      
+      Please provide a risk assessment with the following information in JSON format:
+      1. An overall risk score from 0-100 (higher means more risk)
+      2. A breakdown of risk components (behavioralRisk, travelRisk, accessRisk, complianceRisk, geographicRisk) with scores from 0-100
+      3. A confidence score from 0-100 indicating how confident you are in this assessment
+      4. A detailed explanation of the risk assessment
+      5. 3-5 specific recommendations to mitigate risks
+      6. A trend assessment (improving, stable, or deteriorating)
+      7. Risk score predictions for next week and next month
+      
+      Return ONLY the JSON object with these fields: score, components, confidence, explanation, recommendations, trend, predictions.
+    `;
+    
+    // Call the LLM API
+    const llmResponse = await invokeChutesLLM(prompt);
+    
+    // Parse the JSON response
+    let parsedResponse;
+    try {
+      // Find JSON in the response (in case the LLM adds extra text)
+      const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsedResponse = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No valid JSON found in LLM response");
+      }
+    } catch (parseError) {
+      console.error("Error parsing LLM response:", parseError);
+      console.log("Raw LLM response:", llmResponse);
+      throw new Error("Failed to parse LLM response");
+    }
+    
+    // Validate and format the response
+    return {
+      score: Math.round(Number(parsedResponse.score) || 50),
+      components: parsedResponse.components || {
+        behavioralRisk: 50,
+        travelRisk: 50,
+        accessRisk: 50,
+        complianceRisk: 50,
+        geographicRisk: 50
+      },
+      confidence: Math.round(Number(parsedResponse.confidence) || 80),
+      explanation: parsedResponse.explanation || "Risk assessment completed based on available data.",
+      recommendations: parsedResponse.recommendations || [
+        "Conduct regular security awareness training",
+        "Implement stricter travel protocols for high-risk regions",
+        "Review access privileges periodically"
+      ],
+      trend: parsedResponse.trend || "stable",
+      predictions: parsedResponse.predictions || {
+        nextWeek: Math.round(Number(parsedResponse.score) || 50),
+        nextMonth: Math.round(Number(parsedResponse.score) || 50)
+      }
+    };
+  } catch (error) {
+    console.error("Error in personnel risk scoring:", error);
+    
+    // Fallback to deterministic algorithm if LLM fails
+    return fallbackPersonnelRiskScoring(personnelData);
+  }
+}
+
+// Fallback function for personnel risk scoring if LLM fails
+function fallbackPersonnelRiskScoring(personnelData: any): RiskScoringResponse {
   const { category, clearance_level, current_location, travel_status } = personnelData;
   
   let baseScore = 0;
@@ -380,11 +585,99 @@ function scorePersonnelRisk(personnelData: any): RiskScoringResponse {
   };
 }
 
-// Mock implementation of travel risk scoring
-function scoreTravelRisk(travelData: any): RiskScoringResponse {
-  // Similar implementation to asset risk scoring but tailored for travel
-  // Would call LLM in production
-  
+// Implementation of travel risk scoring using LLM
+async function scoreTravelRisk(travelData: any): Promise<RiskScoringResponse> {
+  try {
+    // Extract relevant data for risk assessment
+    const { 
+      traveler_name, traveler_clearance_level, destination, origin,
+      departure_date, return_date, purpose, status, emergency_contacts, itinerary
+    } = travelData;
+    
+    // Construct a detailed prompt for the LLM
+    const prompt = `
+      You are an AI security risk analyst. Analyze the security risk of the following travel plan and provide a comprehensive risk assessment.
+      
+      Travel Plan Details:
+      - Traveler: ${traveler_name || 'Unknown'}
+      - Clearance Level: ${traveler_clearance_level || 'Unknown'}
+      - Origin: ${origin?.city || 'Unknown'}, ${origin?.country || 'Unknown'}
+      - Destination: ${destination?.city || 'Unknown'}, ${destination?.country || 'Unknown'}
+      - Departure Date: ${departure_date ? new Date(departure_date).toISOString() : 'Unknown'}
+      - Return Date: ${return_date ? new Date(return_date).toISOString() : 'Unknown'}
+      - Purpose: ${purpose || 'Unknown'}
+      - Status: ${status || 'Unknown'}
+      
+      Emergency Contacts:
+      ${JSON.stringify(emergency_contacts || {}, null, 2)}
+      
+      Itinerary:
+      ${JSON.stringify(itinerary || {}, null, 2)}
+      
+      Please provide a risk assessment with the following information in JSON format:
+      1. An overall risk score from 0-100 (higher means more risk)
+      2. A breakdown of risk components (geopolitical, security, health, environmental, transportation) with scores from 0-100
+      3. A confidence score from 0-100 indicating how confident you are in this assessment
+      4. A detailed explanation of the risk assessment
+      5. 3-5 specific recommendations to mitigate risks during travel
+      6. A trend assessment (improving, stable, or deteriorating)
+      7. Risk score predictions for next week and next month
+      
+      Return ONLY the JSON object with these fields: score, components, confidence, explanation, recommendations, trend, predictions.
+    `;
+    
+    // Call the LLM API
+    const llmResponse = await invokeChutesLLM(prompt);
+    
+    // Parse the JSON response
+    let parsedResponse;
+    try {
+      // Find JSON in the response (in case the LLM adds extra text)
+      const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsedResponse = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No valid JSON found in LLM response");
+      }
+    } catch (parseError) {
+      console.error("Error parsing LLM response:", parseError);
+      console.log("Raw LLM response:", llmResponse);
+      throw new Error("Failed to parse LLM response");
+    }
+    
+    // Validate and format the response
+    return {
+      score: Math.round(Number(parsedResponse.score) || 50),
+      components: parsedResponse.components || {
+        geopolitical: 50,
+        security: 50,
+        health: 50,
+        environmental: 50,
+        transportation: 50
+      },
+      confidence: Math.round(Number(parsedResponse.confidence) || 80),
+      explanation: parsedResponse.explanation || "Risk assessment completed based on available data.",
+      recommendations: parsedResponse.recommendations || [
+        "Register with local embassy upon arrival",
+        "Maintain regular check-ins with security team",
+        "Use secure transportation arranged by local office"
+      ],
+      trend: parsedResponse.trend || "stable",
+      predictions: parsedResponse.predictions || {
+        nextWeek: Math.round(Number(parsedResponse.score) || 50),
+        nextMonth: Math.round(Number(parsedResponse.score) || 50)
+      }
+    };
+  } catch (error) {
+    console.error("Error in travel risk scoring:", error);
+    
+    // Fallback to deterministic algorithm if LLM fails
+    return fallbackTravelRiskScoring(travelData);
+  }
+}
+
+// Fallback function for travel risk scoring if LLM fails
+function fallbackTravelRiskScoring(travelData: any): RiskScoringResponse {
   const { destination, departure_date, return_date, purpose, traveler_clearance_level } = travelData;
   
   let baseScore = 0;
@@ -458,12 +751,81 @@ function scoreTravelRisk(travelData: any): RiskScoringResponse {
   };
 }
 
-// Mock implementation of incident risk scoring
-function scoreIncidentRisk(incidentData: any): RiskScoringResponse {
-  // Similar implementation to asset risk scoring but tailored for incidents
-  // Would call LLM in production
-  
-  const { severity, status, location, department } = incidentData;
+// Implementation of incident risk scoring using LLM
+async function scoreIncidentRisk(incidentData: any): Promise<RiskScoringResponse> {
+  try {
+    // Extract relevant data for risk assessment
+    const { 
+      title, description, severity, status, location, 
+      department, involved_parties, immediate_actions 
+    } = incidentData;
+    
+    // Construct a detailed prompt for the LLM
+    const prompt = `
+      You are an AI security risk analyst. Analyze the security risk of the following incident and provide a comprehensive risk assessment.
+      
+      Incident Details:
+      - Title: ${title || 'Unknown'}
+      - Description: ${description || 'Unknown'}
+      - Severity: ${severity || 'Unknown'}
+      - Status: ${status || 'Unknown'}
+      - Location: ${location || 'Unknown'}
+      - Department: ${department || 'Unknown'}
+      - Involved Parties: ${Array.isArray(involved_parties) ? involved_parties.join(', ') : 'None'}
+      - Immediate Actions Taken: ${immediate_actions || 'None'}
+      
+      Please provide a risk assessment with the following information in JSON format:
+      1. An overall risk score from 0-100 (higher means more risk)
+      2. A confidence score from 0-100 indicating how confident you are in this assessment
+      3. A detailed explanation of the risk assessment
+      4. 3-5 specific recommendations to address this incident
+      5. A trend assessment (improving, stable, or deteriorating)
+      
+      Return ONLY the JSON object with these fields: score, confidence, explanation, recommendations, trend.
+    `;
+    
+    // Call the LLM API
+    const llmResponse = await invokeChutesLLM(prompt);
+    
+    // Parse the JSON response
+    let parsedResponse;
+    try {
+      // Find JSON in the response (in case the LLM adds extra text)
+      const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsedResponse = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No valid JSON found in LLM response");
+      }
+    } catch (parseError) {
+      console.error("Error parsing LLM response:", parseError);
+      console.log("Raw LLM response:", llmResponse);
+      throw new Error("Failed to parse LLM response");
+    }
+    
+    // Validate and format the response
+    return {
+      score: Math.round(Number(parsedResponse.score) || 50),
+      confidence: Math.round(Number(parsedResponse.confidence) || 80),
+      explanation: parsedResponse.explanation || "Risk assessment completed based on available data.",
+      recommendations: parsedResponse.recommendations || [
+        "Escalate to senior management for visibility",
+        "Implement immediate containment measures",
+        "Conduct thorough investigation and root cause analysis"
+      ],
+      trend: parsedResponse.trend || "stable"
+    };
+  } catch (error) {
+    console.error("Error in incident risk scoring:", error);
+    
+    // Fallback to deterministic algorithm if LLM fails
+    return fallbackIncidentRiskScoring(incidentData);
+  }
+}
+
+// Fallback function for incident risk scoring if LLM fails
+function fallbackIncidentRiskScoring(incidentData: any): RiskScoringResponse {
+  const { severity, status, department } = incidentData;
   
   let baseScore = 0;
   
@@ -511,11 +873,80 @@ function scoreIncidentRisk(incidentData: any): RiskScoringResponse {
   };
 }
 
-// Mock implementation of risk evaluation
-function evaluateRisk(riskData: any): RiskScoringResponse {
-  // Similar implementation to asset risk scoring but tailored for risks
-  // Would call LLM in production
-  
+// Implementation of risk evaluation using LLM
+async function evaluateRisk(riskData: any): Promise<RiskScoringResponse> {
+  try {
+    // Extract relevant data for risk assessment
+    const { 
+      title, description, category, impact, likelihood, 
+      status, mitigation_plan, department 
+    } = riskData;
+    
+    // Construct a detailed prompt for the LLM
+    const prompt = `
+      You are an AI risk analyst. Evaluate the following risk and provide a comprehensive risk assessment.
+      
+      Risk Details:
+      - Title: ${title || 'Unknown'}
+      - Description: ${description || 'Unknown'}
+      - Category: ${category || 'Unknown'}
+      - Impact: ${impact ? impact.replace('_', ' ') : 'Unknown'}
+      - Likelihood: ${likelihood ? likelihood.replace('_', ' ') : 'Unknown'}
+      - Status: ${status || 'Unknown'}
+      - Department: ${department || 'Unknown'}
+      - Mitigation Plan: ${mitigation_plan || 'None'}
+      
+      Please provide a risk assessment with the following information in JSON format:
+      1. A risk score from 1-25 (calculated as impact * likelihood, where both are on a 1-5 scale)
+      2. A confidence score from 0-100 indicating how confident you are in this assessment
+      3. A detailed explanation of the risk assessment
+      4. 3-5 specific recommendations to address this risk
+      5. A trend assessment (improving, stable, or deteriorating)
+      
+      Return ONLY the JSON object with these fields: score, confidence, explanation, recommendations, trend.
+    `;
+    
+    // Call the LLM API
+    const llmResponse = await invokeChutesLLM(prompt);
+    
+    // Parse the JSON response
+    let parsedResponse;
+    try {
+      // Find JSON in the response (in case the LLM adds extra text)
+      const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsedResponse = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No valid JSON found in LLM response");
+      }
+    } catch (parseError) {
+      console.error("Error parsing LLM response:", parseError);
+      console.log("Raw LLM response:", llmResponse);
+      throw new Error("Failed to parse LLM response");
+    }
+    
+    // Validate and format the response
+    return {
+      score: Math.round(Number(parsedResponse.score) || 12),
+      confidence: Math.round(Number(parsedResponse.confidence) || 80),
+      explanation: parsedResponse.explanation || "Risk assessment completed based on available data.",
+      recommendations: parsedResponse.recommendations || [
+        "Develop detailed mitigation plan",
+        "Assign risk owner with clear accountability",
+        "Establish regular monitoring and reporting"
+      ],
+      trend: parsedResponse.trend || "stable"
+    };
+  } catch (error) {
+    console.error("Error in risk evaluation:", error);
+    
+    // Fallback to deterministic algorithm if LLM fails
+    return fallbackRiskEvaluation(riskData);
+  }
+}
+
+// Fallback function for risk evaluation if LLM fails
+function fallbackRiskEvaluation(riskData: any): RiskScoringResponse {
   const { category, impact, likelihood, status } = riskData;
   
   // Calculate risk score based on impact and likelihood
@@ -572,11 +1003,155 @@ function evaluateRisk(riskData: any): RiskScoringResponse {
   };
 }
 
-// Mock implementation of organization risk scoring
-function scoreOrganizationRisk(orgData: any): RiskScoringResponse {
-  // This would aggregate risk scores from various sources
-  // Would call LLM in production with comprehensive data
+// Implementation of organization risk scoring using LLM
+async function scoreOrganizationRisk(orgData: any): Promise<RiskScoringResponse> {
+  try {
+    // Extract relevant data for risk assessment
+    const { assets, personnel, incidents, risks, travelPlans } = orgData;
+    
+    // Prepare summary data for the LLM to reduce token usage
+    const assetSummary = {
+      total: assets?.length || 0,
+      byType: countByProperty(assets, 'type'),
+      byStatus: countByProperty(assets, 'status'),
+      highRiskCount: assets?.filter((a: any) => (a.ai_risk_score?.overall || 0) > 70).length || 0
+    };
+    
+    const personnelSummary = {
+      total: personnel?.length || 0,
+      byCategory: countByProperty(personnel, 'category'),
+      byStatus: countByProperty(personnel, 'status'),
+      highRiskCount: personnel?.filter((p: any) => (p.ai_risk_score?.overall || 0) > 70).length || 0,
+      travelingCount: personnel?.filter((p: any) => p.travel_status?.isActive).length || 0
+    };
+    
+    const incidentSummary = {
+      total: incidents?.length || 0,
+      bySeverity: countByProperty(incidents, 'severity'),
+      byStatus: countByProperty(incidents, 'status'),
+      recentCount: incidents?.filter((i: any) => {
+        const date = new Date(i.date_time);
+        const now = new Date();
+        const daysDiff = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
+        return daysDiff <= 30;
+      }).length || 0
+    };
+    
+    const riskSummary = {
+      total: risks?.length || 0,
+      byCategory: countByProperty(risks, 'category'),
+      byStatus: countByProperty(risks, 'status'),
+      highRiskCount: risks?.filter((r: any) => r.risk_score > 15).length || 0
+    };
+    
+    const travelSummary = {
+      total: travelPlans?.length || 0,
+      byStatus: countByProperty(travelPlans, 'status'),
+      highRiskCount: travelPlans?.filter((t: any) => (t.risk_assessment?.overall || 0) > 70).length || 0,
+      activeCount: travelPlans?.filter((t: any) => t.status === 'in-progress').length || 0
+    };
+    
+    // Construct a detailed prompt for the LLM
+    const prompt = `
+      You are an AI security risk analyst. Analyze the overall security risk of an organization based on the following data and provide a comprehensive risk assessment.
+      
+      Asset Summary:
+      ${JSON.stringify(assetSummary, null, 2)}
+      
+      Personnel Summary:
+      ${JSON.stringify(personnelSummary, null, 2)}
+      
+      Incident Summary:
+      ${JSON.stringify(incidentSummary, null, 2)}
+      
+      Risk Summary:
+      ${JSON.stringify(riskSummary, null, 2)}
+      
+      Travel Summary:
+      ${JSON.stringify(travelSummary, null, 2)}
+      
+      Please provide a risk assessment with the following information in JSON format:
+      1. An overall risk score from 0-100 (higher means more risk)
+      2. A breakdown of risk components (assetRisk, personnelRisk, incidentRisk, geopoliticalRisk, cyberRisk) with scores from 0-100
+      3. A confidence score from 0-100 indicating how confident you are in this assessment
+      4. A detailed explanation of the risk assessment
+      5. 4-6 specific recommendations to improve the organization's security posture
+      6. A trend assessment (improving, stable, or deteriorating)
+      7. Risk score predictions for next week and next month
+      
+      Return ONLY the JSON object with these fields: score, components, confidence, explanation, recommendations, trend, predictions.
+    `;
+    
+    // Call the LLM API
+    const llmResponse = await invokeChutesLLM(prompt);
+    
+    // Parse the JSON response
+    let parsedResponse;
+    try {
+      // Find JSON in the response (in case the LLM adds extra text)
+      const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsedResponse = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No valid JSON found in LLM response");
+      }
+    } catch (parseError) {
+      console.error("Error parsing LLM response:", parseError);
+      console.log("Raw LLM response:", llmResponse);
+      throw new Error("Failed to parse LLM response");
+    }
+    
+    // Validate and format the response
+    return {
+      score: Math.round(Number(parsedResponse.score) || 50),
+      components: parsedResponse.components || {
+        assetRisk: 50,
+        personnelRisk: 50,
+        incidentRisk: 50,
+        geopoliticalRisk: 50,
+        cyberRisk: 50
+      },
+      confidence: Math.round(Number(parsedResponse.confidence) || 80),
+      explanation: parsedResponse.explanation || "Risk assessment completed based on available data.",
+      recommendations: parsedResponse.recommendations || [
+        "Conduct comprehensive security assessment across all departments",
+        "Implement standardized risk management procedures",
+        "Enhance security training and awareness programs",
+        "Establish centralized security monitoring and response team"
+      ],
+      trend: parsedResponse.trend || "stable",
+      predictions: parsedResponse.predictions || {
+        nextWeek: Math.round(Number(parsedResponse.score) || 50),
+        nextMonth: Math.round(Number(parsedResponse.score) || 50)
+      }
+    };
+  } catch (error) {
+    console.error("Error in organization risk scoring:", error);
+    
+    // Fallback to deterministic algorithm if LLM fails
+    return fallbackOrganizationRiskScoring(orgData);
+  }
+}
+
+// Helper function to count items by a property
+function countByProperty(items: any[] | undefined, property: string): Record<string, number> {
+  if (!items || items.length === 0) return {};
   
+  const counts: Record<string, number> = {};
+  
+  items.forEach(item => {
+    const value = item[property];
+    if (value) {
+      counts[value] = (counts[value] || 0) + 1;
+    }
+  });
+  
+  return counts;
+}
+
+// Fallback function for organization risk scoring if LLM fails
+function fallbackOrganizationRiskScoring(orgData: any): RiskScoringResponse {
+  // This would aggregate risk scores from various sources
   // For now, we'll use a simple algorithm
   const { assets, personnel, incidents, risks, travelPlans } = orgData;
   
@@ -649,23 +1224,80 @@ function scoreOrganizationRisk(orgData: any): RiskScoringResponse {
   };
 }
 
-// Mock implementation of mitigation effectiveness evaluation
-function evaluateMitigationEffectiveness(mitigationData: any): RiskScoringResponse {
-  // This would evaluate how effective a mitigation is at reducing risk
-  // Would call LLM in production
-  
-  const { name, category, description } = mitigationData;
+// Implementation of mitigation effectiveness evaluation using LLM
+async function evaluateMitigationEffectiveness(mitigationData: any): Promise<RiskScoringResponse> {
+  try {
+    // Extract relevant data for evaluation
+    const { name, description, category, default_risk_reduction_score, is_custom } = mitigationData;
+    
+    // Construct a detailed prompt for the LLM
+    const prompt = `
+      You are an AI security risk analyst. Evaluate the effectiveness of the following security mitigation strategy and provide a comprehensive assessment.
+      
+      Mitigation Details:
+      - Name: ${name || 'Unknown'}
+      - Description: ${description || 'No description provided'}
+      - Category: ${category || 'Unknown'}
+      - Default Risk Reduction Score: ${default_risk_reduction_score || 0}
+      - Custom Mitigation: ${is_custom ? 'Yes' : 'No'}
+      
+      Please provide an assessment with the following information in JSON format:
+      1. A risk reduction score from 0-100 (higher means more effective at reducing risk)
+      2. A confidence score from 0-100 indicating how confident you are in this assessment
+      3. A detailed explanation of why this mitigation is effective or not
+      
+      Return ONLY the JSON object with these fields: score, confidence, explanation.
+    `;
+    
+    // Call the LLM API
+    const llmResponse = await invokeChutesLLM(prompt);
+    
+    // Parse the JSON response
+    let parsedResponse;
+    try {
+      // Find JSON in the response (in case the LLM adds extra text)
+      const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsedResponse = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No valid JSON found in LLM response");
+      }
+    } catch (parseError) {
+      console.error("Error parsing LLM response:", parseError);
+      console.log("Raw LLM response:", llmResponse);
+      throw new Error("Failed to parse LLM response");
+    }
+    
+    // Validate and format the response
+    return {
+      score: Math.round(Number(parsedResponse.score) || default_risk_reduction_score || 10),
+      confidence: Math.round(Number(parsedResponse.confidence) || 75),
+      explanation: parsedResponse.explanation || `This ${category} mitigation strategy is estimated to reduce risk by ${default_risk_reduction_score || 10} points.`
+    };
+  } catch (error) {
+    console.error("Error in mitigation effectiveness evaluation:", error);
+    
+    // Fallback to deterministic algorithm if LLM fails
+    return fallbackMitigationEvaluation(mitigationData);
+  }
+}
+
+// Fallback function for mitigation effectiveness evaluation if LLM fails
+function fallbackMitigationEvaluation(mitigationData: any): RiskScoringResponse {
+  const { name, category, description, default_risk_reduction_score } = mitigationData;
   
   // For now, we'll use a simple algorithm
-  let baseScore = 0;
+  let baseScore = default_risk_reduction_score || 0;
   
   // Category factors
-  if (category === 'asset') baseScore = 15;
-  else if (category === 'personnel') baseScore = 20;
-  else if (category === 'incident') baseScore = 25;
-  else if (category === 'travel') baseScore = 18;
-  else if (category === 'risk') baseScore = 22;
-  else baseScore = 12;
+  if (!baseScore) {
+    if (category === 'asset') baseScore = 15;
+    else if (category === 'personnel') baseScore = 20;
+    else if (category === 'incident') baseScore = 25;
+    else if (category === 'travel') baseScore = 18;
+    else if (category === 'risk') baseScore = 22;
+    else baseScore = 12;
+  }
   
   // Adjust based on description comprehensiveness
   if (description && description.length > 100) {
