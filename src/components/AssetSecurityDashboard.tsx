@@ -33,7 +33,8 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
-  Loader2
+  Loader2,
+  Building2
 } from 'lucide-react';
 import GoogleMapComponent from './common/GoogleMapComponent';
 import AddAssetForm from './AddAssetForm';
@@ -354,7 +355,7 @@ const AssetSecurityDashboard: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Asset Security Management</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Assets</h1>
           <p className="text-gray-600">AI-enhanced monitoring and protection of critical assets</p>
         </div>
         <div className="flex items-center space-x-3">
@@ -405,7 +406,7 @@ const AssetSecurityDashboard: React.FC = () => {
               <p className="text-sm text-gray-600">Total Assets</p>
               <p className="text-2xl font-bold text-gray-900">{assetStats.total}</p>
             </div>
-            <Building className="w-8 h-8 text-blue-500" />
+            <Building2 className="w-8 h-8 text-blue-500" />
           </div>
         </div>
         
@@ -594,7 +595,7 @@ const AssetSecurityDashboard: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                            <Building className="w-5 h-5 text-white" />
+                            <Building2 className="w-5 h-5 text-white" />
                           </div>
                           <div className="ml-4">
                             <div className="text-sm font-medium text-gray-900">{asset.name}</div>
@@ -702,7 +703,7 @@ const AssetSecurityDashboard: React.FC = () => {
               <div key={asset.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-4">
                   <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
-                    <Building className="w-6 h-6 text-white" />
+                    <Building2 className="w-6 h-6 text-white" />
                   </div>
                   <div className="flex items-center space-x-2">
                     <Brain className="w-4 h-4 text-purple-500" />
@@ -789,7 +790,7 @@ const AssetSecurityDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
                   <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center">
-                    <Building className="w-8 h-8 text-white" />
+                    <Building2 className="w-8 h-8 text-white" />
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">{selectedAsset.name}</h2>
