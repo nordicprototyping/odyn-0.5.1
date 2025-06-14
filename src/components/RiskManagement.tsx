@@ -19,13 +19,13 @@ import {
   Clock,
   AlertCircle,
   X,
-  Save,
-  Loader2,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Loader2
 } from 'lucide-react';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import AddEditRiskForm from './AddEditRiskForm';
 
 type Risk = Database['public']['Tables']['risks']['Row'];
 type RiskInsert = Database['public']['Tables']['risks']['Insert'];
@@ -46,20 +46,6 @@ const RiskManagement: React.FC = () => {
   const [editingRisk, setEditingRisk] = useState<Risk | null>(null);
 
   const { user, profile, hasPermission } = useAuth();
-
-  const [formData, setFormData] = useState<RiskInsert>({
-    title: '',
-    description: '',
-    category: 'operational',
-    status: 'identified',
-    impact: 'medium',
-    likelihood: 'medium',
-    mitigation_plan: '',
-    owner_user_id: null,
-    identified_by_user_id: null,
-    department: '',
-    due_date: null
-  });
 
   useEffect(() => {
     fetchRisks();
@@ -88,76 +74,137 @@ const RiskManagement: React.FC = () => {
     }
   };
 
-  const handleAddRisk = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
+  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
+    if (!profile?.organization_id) {
+      console.warn('Cannot log audit event: no organization ID available');
+      return;
+    }
+    
     try {
+      const { error } = await supabase.from('audit_logs').insert({
+        user_id: user?.id || null,
+        organization_id: profile.organization_id,
+        action,
+        resource_type: 'risk',
+        resource_id: resourceId,
+        details,
+        ip_address: null, // We'll skip IP detection for now
+        user_agent: navigator.userAgent
+      });
+
+      if (error) {
+        console.error('Error logging audit event:', error);
+      }
+    } catch (error) {
+      console.error('Unexpected error logging audit event:', error);
+    }
+  };
+
+  const handleCreateRisk = async (formData: RiskInsert) => {
+    try {
+      setLoading(true);
+      setError(null);
+
       const riskData: RiskInsert = {
         ...formData,
+        organization_id: profile?.organization_id || '',
         identified_by_user_id: user?.id || null,
         owner_user_id: formData.owner_user_id || user?.id || null,
         department: formData.department || profile?.department || null
       };
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('risks')
-        .insert([riskData]);
+        .insert([riskData])
+        .select()
+        .single();
 
       if (error) {
         throw error;
       }
 
+      // Log the creation in audit logs
+      if (data) {
+        await logAuditEvent('risk_created', data.id, { 
+          risk_title: data.title,
+          risk_category: data.category,
+          risk_score: data.risk_score
+        });
+      }
+
       await fetchRisks();
       setShowAddForm(false);
-      resetForm();
     } catch (err) {
       console.error('Error adding risk:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add risk');
+      throw err;
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEditRisk = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpdateRisk = async (formData: RiskInsert) => {
     if (!editingRisk) return;
 
-    setLoading(true);
-    setError(null);
-
     try {
-      const { error } = await supabase
+      setLoading(true);
+      setError(null);
+
+      const updateData = {
+        ...formData,
+        organization_id: profile?.organization_id,
+        last_reviewed_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabase
         .from('risks')
-        .update({
-          ...formData,
-          last_reviewed_at: new Date().toISOString()
-        })
-        .eq('id', editingRisk.id);
+        .update(updateData)
+        .eq('id', editingRisk.id)
+        .select()
+        .single();
 
       if (error) {
         throw error;
+      }
+
+      // Log the update in audit logs
+      if (data) {
+        await logAuditEvent('risk_updated', data.id, { 
+          risk_title: data.title,
+          risk_category: data.category,
+          risk_score: data.risk_score,
+          previous_status: editingRisk.status,
+          new_status: data.status
+        });
       }
 
       await fetchRisks();
       setShowEditForm(false);
       setEditingRisk(null);
-      resetForm();
     } catch (err) {
       console.error('Error updating risk:', err);
-      setError(err instanceof Error ? err.message : 'Failed to update risk');
+      throw err;
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteRisk = async (riskId: string) => {
+  const handleDeleteRisk = async (riskId: string, riskTitle: string) => {
     if (!confirm('Are you sure you want to delete this risk? This action cannot be undone.')) {
       return;
     }
 
     try {
+      setLoading(true);
+      setError(null);
+      
+      // Get risk details before deletion for audit log
+      const { data: riskData } = await supabase
+        .from('risks')
+        .select('title, category, risk_score, status')
+        .eq('id', riskId)
+        .single();
+      
+      // Delete the risk
       const { error } = await supabase
         .from('risks')
         .delete()
@@ -167,45 +214,29 @@ const RiskManagement: React.FC = () => {
         throw error;
       }
 
+      // Log the deletion in audit logs
+      await logAuditEvent('risk_deleted', riskId, { 
+        risk_title: riskTitle,
+        risk_details: riskData || {},
+        deleted_at: new Date().toISOString()
+      });
+
+      // Close the detail view if the deleted risk was selected
+      if (selectedRisk?.id === riskId) {
+        setSelectedRisk(null);
+      }
+      
       await fetchRisks();
-      setSelectedRisk(null);
     } catch (err) {
       console.error('Error deleting risk:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete risk');
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      title: '',
-      description: '',
-      category: 'operational',
-      status: 'identified',
-      impact: 'medium',
-      likelihood: 'medium',
-      mitigation_plan: '',
-      owner_user_id: null,
-      identified_by_user_id: null,
-      department: '',
-      due_date: null
-    });
   };
 
   const openEditForm = (risk: Risk) => {
     setEditingRisk(risk);
-    setFormData({
-      title: risk.title,
-      description: risk.description,
-      category: risk.category,
-      status: risk.status,
-      impact: risk.impact,
-      likelihood: risk.likelihood,
-      mitigation_plan: risk.mitigation_plan || '',
-      owner_user_id: risk.owner_user_id,
-      identified_by_user_id: risk.identified_by_user_id,
-      department: risk.department || '',
-      due_date: risk.due_date
-    });
     setShowEditForm(true);
   };
 
@@ -581,6 +612,7 @@ const RiskManagement: React.FC = () => {
                       <button
                         onClick={() => setSelectedRisk(risk)}
                         className="text-blue-600 hover:text-blue-900"
+                        title="View details"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
@@ -588,14 +620,16 @@ const RiskManagement: React.FC = () => {
                         <button
                           onClick={() => openEditForm(risk)}
                           className="text-gray-600 hover:text-gray-900"
+                          title="Edit risk"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
                       )}
                       {hasPermission('risks.delete') && (
                         <button
-                          onClick={() => handleDeleteRisk(risk.id)}
+                          onClick={() => handleDeleteRisk(risk.id, risk.title)}
                           className="text-red-600 hover:text-red-900"
+                          title="Delete risk"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -609,208 +643,24 @@ const RiskManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Add/Edit Risk Form Modal */}
-      {(showAddForm || showEditForm) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">
-                  {showAddForm ? 'Add New Risk' : 'Edit Risk'}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowAddForm(false);
-                    setShowEditForm(false);
-                    setEditingRisk(null);
-                    resetForm();
-                  }}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-            
-            <form onSubmit={showAddForm ? handleAddRisk : handleEditRisk} className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Risk Title *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.title}
-                    onChange={(e) => setFormData({...formData, title: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter risk title"
-                  />
-                </div>
-                
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Description *
-                  </label>
-                  <textarea
-                    required
-                    rows={3}
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Describe the risk in detail..."
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Category *
-                  </label>
-                  <select
-                    required
-                    value={formData.category}
-                    onChange={(e) => setFormData({...formData, category: e.target.value as any})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="operational">Operational</option>
-                    <option value="financial">Financial</option>
-                    <option value="strategic">Strategic</option>
-                    <option value="compliance">Compliance</option>
-                    <option value="security">Security</option>
-                    <option value="technical">Technical</option>
-                    <option value="environmental">Environmental</option>
-                    <option value="reputational">Reputational</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Status *
-                  </label>
-                  <select
-                    required
-                    value={formData.status}
-                    onChange={(e) => setFormData({...formData, status: e.target.value as any})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="identified">Identified</option>
-                    <option value="assessed">Assessed</option>
-                    <option value="mitigated">Mitigated</option>
-                    <option value="monitoring">Monitoring</option>
-                    <option value="closed">Closed</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Impact Level *
-                  </label>
-                  <select
-                    required
-                    value={formData.impact}
-                    onChange={(e) => setFormData({...formData, impact: e.target.value as any})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="very_low">Very Low</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="very_high">Very High</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Likelihood *
-                  </label>
-                  <select
-                    required
-                    value={formData.likelihood}
-                    onChange={(e) => setFormData({...formData, likelihood: e.target.value as any})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="very_low">Very Low</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="very_high">Very High</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Department
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.department || ''}
-                    onChange={(e) => setFormData({...formData, department: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter department"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Due Date
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.due_date ? formData.due_date.split('T')[0] : ''}
-                    onChange={(e) => setFormData({...formData, due_date: e.target.value ? `${e.target.value}T00:00:00Z` : null})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Mitigation Plan
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={formData.mitigation_plan || ''}
-                    onChange={(e) => setFormData({...formData, mitigation_plan: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Describe the mitigation plan and actions taken..."
-                  />
-                </div>
-              </div>
-              
-              <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddForm(false);
-                    setShowEditForm(false);
-                    setEditingRisk(null);
-                    resetForm();
-                  }}
-                  disabled={loading}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex items-center space-x-2 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>{showAddForm ? 'Adding...' : 'Updating...'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      <span>{showAddForm ? 'Add Risk' : 'Update Risk'}</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* Add Risk Form Modal */}
+      {showAddForm && (
+        <AddEditRiskForm
+          onClose={() => setShowAddForm(false)}
+          onSubmit={handleCreateRisk}
+        />
+      )}
+
+      {/* Edit Risk Form Modal */}
+      {showEditForm && editingRisk && (
+        <AddEditRiskForm
+          onClose={() => {
+            setShowEditForm(false);
+            setEditingRisk(null);
+          }}
+          onSubmit={handleUpdateRisk}
+          riskToEdit={editingRisk}
+        />
       )}
 
       {/* Risk Detail Modal */}
@@ -835,12 +685,26 @@ const RiskManagement: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedRisk(null)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+                <div className="flex items-center space-x-2">
+                  {hasPermission('risks.delete') && (
+                    <button
+                      onClick={() => {
+                        handleDeleteRisk(selectedRisk.id, selectedRisk.title);
+                        setSelectedRisk(null);
+                      }}
+                      className="p-2 text-red-600 hover:text-red-800 transition-colors"
+                      title="Delete risk"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelectedRisk(null)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
             </div>
             
