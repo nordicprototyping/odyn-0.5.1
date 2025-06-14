@@ -9,27 +9,26 @@ import {
   Clock,
   MapPin,
   User,
-  FileText,
-  Upload,
-  X,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Eye,
-  Edit,
-  Trash2,
-  ChevronDown,
-  ChevronRight,
+  Building,
   TrendingUp,
   TrendingDown,
   Activity,
-  Loader2
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  X,
+  Save,
+  Loader2,
+  ChevronDown,
+  ChevronRight,
+  Trash2
 } from 'lucide-react';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
 type IncidentReport = Database['public']['Tables']['incident_reports']['Row'];
 type IncidentInsert = Database['public']['Tables']['incident_reports']['Insert'];
+type IncidentUpdate = Database['public']['Tables']['incident_reports']['Update'];
 
 const IncidentManagement: React.FC = () => {
   const [showReportForm, setShowReportForm] = useState(false);
@@ -43,6 +42,7 @@ const IncidentManagement: React.FC = () => {
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editingIncident, setEditingIncident] = useState<IncidentReport | null>(null);
 
   const { user, profile, hasPermission } = useAuth();
 
@@ -69,6 +69,18 @@ const IncidentManagement: React.FC = () => {
     fetchIncidents();
   }, []);
 
+  useEffect(() => {
+    // Pre-populate form with user data when not editing
+    if (!editingIncident) {
+      setFormData(prev => ({
+        ...prev,
+        reporter_name: profile?.full_name || '',
+        reporter_email: user?.email || '',
+        department: profile?.department || ''
+      }));
+    }
+  }, [profile, user, editingIncident]);
+
   const fetchIncidents = async () => {
     try {
       setLoading(true);
@@ -89,6 +101,32 @@ const IncidentManagement: React.FC = () => {
       setError('Failed to load incident data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
+    if (!profile?.organization_id) {
+      console.warn('Cannot log audit event: no organization ID available');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase.from('audit_logs').insert({
+        user_id: user?.id || null,
+        organization_id: profile.organization_id,
+        action,
+        resource_type: 'incident',
+        resource_id: resourceId,
+        details,
+        ip_address: null, // We'll skip IP detection for now
+        user_agent: navigator.userAgent
+      });
+
+      if (error) {
+        console.error('Error logging audit event:', error);
+      }
+    } catch (error) {
+      console.error('Unexpected error logging audit event:', error);
     }
   };
 
@@ -150,6 +188,75 @@ const IncidentManagement: React.FC = () => {
     }
   };
 
+  const handleEditIncident = (incident: IncidentReport) => {
+    setEditingIncident(incident);
+    
+    // Convert involved_parties array to comma-separated string
+    const involvedPartiesStr = incident.involved_parties ? incident.involved_parties.join(', ') : '';
+    
+    // Format date_time for datetime-local input
+    const dateTime = new Date(incident.date_time).toISOString().slice(0, 16);
+    
+    setFormData({
+      title: incident.title,
+      description: incident.description,
+      date_time: dateTime,
+      severity: incident.severity,
+      location: incident.location,
+      department: incident.department,
+      involved_parties: involvedPartiesStr,
+      immediate_actions: incident.immediate_actions || '',
+      reporter_name: incident.reporter_name,
+      reporter_email: incident.reporter_email,
+      reporter_phone: incident.reporter_phone || ''
+    });
+    
+    setShowReportForm(true);
+  };
+
+  const handleDeleteIncident = async (incidentId: string, incidentTitle: string) => {
+    // Ask for confirmation before deleting
+    const confirmDelete = window.confirm(`Are you sure you want to delete the incident "${incidentTitle}"? This action cannot be undone.`);
+    
+    if (!confirmDelete) {
+      return; // User cancelled the operation
+    }
+    
+    try {
+      setLoading(true);
+      
+      // Delete the incident from the database
+      const { error } = await supabase
+        .from('incident_reports')
+        .delete()
+        .eq('id', incidentId);
+
+      if (error) {
+        throw error;
+      }
+
+      // Log the deletion in audit logs
+      await logAuditEvent('incident_deleted', incidentId, { 
+        incident_title: incidentTitle,
+        deleted_at: new Date().toISOString()
+      });
+
+      // Close the detail view if the deleted incident was selected
+      if (selectedIncident?.id === incidentId) {
+        setSelectedIncident(null);
+      }
+      
+      // Refresh the incidents list
+      await fetchIncidents();
+      
+    } catch (err) {
+      console.error('Error deleting incident:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete incident');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -161,40 +268,102 @@ const IncidentManagement: React.FC = () => {
         throw new Error('Please fill in all required fields');
       }
 
-      const incidentData: IncidentInsert = {
-        title: formData.title,
-        description: formData.description,
-        date_time: formData.date_time,
-        severity: formData.severity,
-        location: formData.location,
-        department: formData.department,
-        involved_parties: formData.involved_parties ? formData.involved_parties.split(',').map(p => p.trim()) : [],
-        immediate_actions: formData.immediate_actions || null,
-        reporter_user_id: user?.id || null,
-        reporter_name: formData.reporter_name,
-        reporter_email: formData.reporter_email,
-        reporter_phone: formData.reporter_phone || null,
-        status: 'Open',
-        timeline: [
-          {
-            timestamp: new Date().toISOString(),
-            action: 'Incident reported',
-            user: formData.reporter_name
-          }
-        ]
-      };
+      // Convert comma-separated involved_parties to array
+      const involvedPartiesArray = formData.involved_parties 
+        ? formData.involved_parties.split(',').map(p => p.trim()).filter(p => p) 
+        : [];
 
-      const { error: insertError } = await supabase
-        .from('incident_reports')
-        .insert([incidentData]);
+      if (editingIncident) {
+        // Update existing incident
+        const incidentData: IncidentUpdate = {
+          title: formData.title,
+          description: formData.description,
+          date_time: formData.date_time,
+          severity: formData.severity,
+          location: formData.location,
+          department: formData.department,
+          involved_parties: involvedPartiesArray,
+          immediate_actions: formData.immediate_actions || null,
+          reporter_name: formData.reporter_name,
+          reporter_email: formData.reporter_email,
+          reporter_phone: formData.reporter_phone || null,
+          updated_at: new Date().toISOString(),
+          // Add a timeline entry for the update
+          timeline: [
+            ...(editingIncident.timeline || []),
+            {
+              timestamp: new Date().toISOString(),
+              action: 'Incident updated',
+              user: profile?.full_name || user?.email || 'Unknown'
+            }
+          ]
+        };
 
-      if (insertError) {
-        throw insertError;
+        const { error: updateError } = await supabase
+          .from('incident_reports')
+          .update(incidentData)
+          .eq('id', editingIncident.id);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        // Log the update in audit logs
+        await logAuditEvent('incident_updated', editingIncident.id, { 
+          incident_title: formData.title,
+          updated_at: new Date().toISOString()
+        });
+
+      } else {
+        // Create new incident
+        const incidentData: IncidentInsert = {
+          organization_id: profile?.organization_id || '',
+          title: formData.title,
+          description: formData.description,
+          date_time: formData.date_time,
+          severity: formData.severity,
+          location: formData.location,
+          department: formData.department,
+          involved_parties: involvedPartiesArray,
+          immediate_actions: formData.immediate_actions || null,
+          reporter_user_id: user?.id || null,
+          reporter_name: formData.reporter_name,
+          reporter_email: formData.reporter_email,
+          reporter_phone: formData.reporter_phone || null,
+          status: 'Open',
+          timeline: [
+            {
+              timestamp: new Date().toISOString(),
+              action: 'Incident reported',
+              user: formData.reporter_name
+            }
+          ]
+        };
+
+        const { data, error: insertError } = await supabase
+          .from('incident_reports')
+          .insert([incidentData])
+          .select()
+          .single();
+
+        if (insertError) {
+          throw insertError;
+        }
+
+        // Log the creation in audit logs
+        if (data) {
+          await logAuditEvent('incident_created', data.id, { 
+            incident_title: formData.title,
+            severity: formData.severity,
+            created_at: new Date().toISOString()
+          });
+        }
       }
 
       // Refresh incidents list
       await fetchIncidents();
       setShowReportForm(false);
+      setEditingIncident(null);
       
       // Reset form
       setFormData({
@@ -206,8 +375,8 @@ const IncidentManagement: React.FC = () => {
         department: '',
         involved_parties: '',
         immediate_actions: '',
-        reporter_name: '',
-        reporter_email: '',
+        reporter_name: profile?.full_name || '',
+        reporter_email: user?.email || '',
         reporter_phone: ''
       });
     } catch (err) {
@@ -250,6 +419,7 @@ const IncidentManagement: React.FC = () => {
           onClick={() => {
             console.log('Report Incident button clicked, setting showReportForm to true');
             setShowReportForm(true);
+            setEditingIncident(null); // Ensure we're in "add" mode, not "edit" mode
           }}
           className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
         >
@@ -506,21 +676,44 @@ const IncidentManagement: React.FC = () => {
                       {incident.assigned_to || 'Unassigned'}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => setSelectedIncident(incident)}
-                      className="text-blue-600 hover:text-blue-900 mr-3"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    {hasPermission('incidents.update') && (
-                      <button className="text-gray-600 hover:text-gray-900 mr-3">
-                        <Edit className="w-4 h-4" />
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => setSelectedIncident(incident)}
+                        className="text-blue-600 hover:text-blue-900"
+                        title="View details"
+                      >
+                        <Eye className="w-4 h-4" />
                       </button>
-                    )}
+                      {hasPermission('incidents.update') && (
+                        <button 
+                          onClick={() => handleEditIncident(incident)}
+                          className="text-gray-600 hover:text-gray-900"
+                          title="Edit incident"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      )}
+                      {hasPermission('incidents.delete') && (
+                        <button 
+                          onClick={() => handleDeleteIncident(incident.id, incident.title)}
+                          className="text-red-600 hover:text-red-900"
+                          title="Delete incident"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
+              {sortedIncidents.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                    No incidents found matching your filters
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -532,9 +725,14 @@ const IncidentManagement: React.FC = () => {
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900">Report New Incident</h2>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  {editingIncident ? 'Edit Incident Report' : 'Report New Incident'}
+                </h2>
                 <button
-                  onClick={() => setShowReportForm(false)}
+                  onClick={() => {
+                    setShowReportForm(false);
+                    setEditingIncident(null);
+                  }}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-6 h-6" />
@@ -708,7 +906,10 @@ const IncidentManagement: React.FC = () => {
               <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
                 <button
                   type="button"
-                  onClick={() => setShowReportForm(false)}
+                  onClick={() => {
+                    setShowReportForm(false);
+                    setEditingIncident(null);
+                  }}
                   disabled={loading}
                   className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
                 >
@@ -722,10 +923,13 @@ const IncidentManagement: React.FC = () => {
                   {loading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Submitting...</span>
+                      <span>{editingIncident ? 'Updating...' : 'Submitting...'}</span>
                     </>
                   ) : (
-                    <span>Submit Incident Report</span>
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>{editingIncident ? 'Update Incident' : 'Submit Incident Report'}</span>
+                    </>
                   )}
                 </button>
               </div>
@@ -749,12 +953,37 @@ const IncidentManagement: React.FC = () => {
                     {selectedIncident.status}
                   </span>
                 </div>
-                <button
-                  onClick={() => setSelectedIncident(null)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+                <div className="flex items-center space-x-2">
+                  {hasPermission('incidents.update') && (
+                    <button
+                      onClick={() => {
+                        handleEditIncident(selectedIncident);
+                        setSelectedIncident(null);
+                      }}
+                      className="p-2 text-blue-600 hover:text-blue-800 transition-colors"
+                      title="Edit incident"
+                    >
+                      <Edit className="w-5 h-5" />
+                    </button>
+                  )}
+                  {hasPermission('incidents.delete') && (
+                    <button
+                      onClick={() => {
+                        handleDeleteIncident(selectedIncident.id, selectedIncident.title);
+                      }}
+                      className="p-2 text-red-600 hover:text-red-800 transition-colors"
+                      title="Delete incident"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelectedIncident(null)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
             </div>
             
