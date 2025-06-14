@@ -21,7 +21,10 @@ import {
   Loader2,
   ChevronDown,
   ChevronRight,
-  Trash2
+  Trash2,
+  FileText,
+  Eye,
+  Edit
 } from 'lucide-react';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
