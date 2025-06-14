@@ -31,6 +31,9 @@ import GoogleMapComponent from './common/GoogleMapComponent';
 import AddTravelPlanForm from './AddTravelPlanForm';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import AIRiskInsights from './AIRiskInsights';
+import MitigationDisplay from './MitigationDisplay';
+import { AppliedMitigation } from '../types/mitigation';
 
 type TravelPlan = Database['public']['Tables']['travel_plans']['Row'];
 type TravelPlanInsert = Database['public']['Tables']['travel_plans']['Insert'];
@@ -553,79 +556,23 @@ const TravelSecurityManagement: React.FC = () => {
                   <Brain className="w-5 h-5 text-purple-500" />
                   <span>AI Risk Assessment</span>
                 </h3>
-                <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">Overall Risk Score</span>
-                        <div className="flex items-center space-x-2">
-                          <span className={`text-2xl font-bold ${(selectedRequest.risk_assessment as any)?.overall <= 30 ? 'text-green-600' : (selectedRequest.risk_assessment as any)?.overall <= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
-                            {(selectedRequest.risk_assessment as any)?.overall || 0}
-                          </span>
-                          <span className="text-sm text-gray-500">/100</span>
-                        </div>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-3">
-                        <div
-                          className={`h-3 rounded-full transition-all duration-500 ${
-                            (selectedRequest.risk_assessment as any)?.overall <= 30 ? 'bg-green-500' :
-                            (selectedRequest.risk_assessment as any)?.overall <= 70 ? 'bg-yellow-500' :
-                            'bg-red-500'
-                          }`}
-                          style={{ width: `${(selectedRequest.risk_assessment as any)?.overall || 0}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">AI Confidence:</span>
-                        <span className="font-medium">{(selectedRequest.risk_assessment as any)?.aiConfidence || 0}%</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Risk Level:</span>
-                        <span className="font-medium">{getRiskLevel((selectedRequest.risk_assessment as any)?.overall || 0)}</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {(selectedRequest.risk_assessment as any)?.components && (
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
-                      {Object.entries((selectedRequest.risk_assessment as any).components).map(([key, value]) => (
-                        <div key={key} className="bg-white rounded-lg p-3 border">
-                          <div className="text-xs font-medium text-gray-500 mb-1 capitalize">
-                            {key}
-                          </div>
-                          <div className="text-lg font-bold text-gray-900">{value as number}</div>
-                          <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
-                            <div
-                              className={`h-1 rounded-full ${
-                                (value as number) <= 30 ? 'bg-green-500' :
-                                (value as number) <= 70 ? 'bg-yellow-500' :
-                                'bg-red-500'
-                              }`}
-                              style={{ width: `${value as number}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {(selectedRequest.risk_assessment as any)?.recommendations && (selectedRequest.risk_assessment as any).recommendations.length > 0 && (
-                    <div className="bg-white rounded-lg p-4 border">
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">AI Recommendations</h4>
-                      <ul className="space-y-1">
-                        {(selectedRequest.risk_assessment as any).recommendations.map((rec: string, index: number) => (
-                          <li key={index} className="text-sm text-gray-600 flex items-start">
-                            <span className="text-purple-500 mr-2">•</span>
-                            {rec}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
+                <AIRiskInsights
+                  score={(selectedRequest.risk_assessment as any)?.overall || 0}
+                  explanation={(selectedRequest.risk_assessment as any)?.explanation || "No AI analysis available for this travel plan."}
+                  recommendations={(selectedRequest.risk_assessment as any)?.recommendations || []}
+                  confidence={(selectedRequest.risk_assessment as any)?.aiConfidence || 75}
+                  trend={(selectedRequest.risk_assessment as any)?.trend || 'stable'}
+                  components={(selectedRequest.risk_assessment as any)?.components || {}}
+                />
               </div>
+
+              {/* Applied Mitigations */}
+              {selectedRequest.mitigations && (selectedRequest.mitigations as AppliedMitigation[]).length > 0 && (
+                <MitigationDisplay 
+                  mitigations={selectedRequest.mitigations as AppliedMitigation[]}
+                  showCategory={true}
+                />
+              )}
 
               {/* Travel Details */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -36,6 +36,9 @@ import GoogleMapComponent from './common/GoogleMapComponent';
 import AddPersonnelForm from './AddPersonnelForm';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import AIRiskInsights from './AIRiskInsights';
+import MitigationDisplay from './MitigationDisplay';
+import { AppliedMitigation } from '../types/mitigation';
 
 interface Personnel {
   id: string;
@@ -78,11 +81,14 @@ interface Personnel {
       nextWeek: number;
       nextMonth: number;
     };
+    explanation?: string;
+    recommendations?: string[];
   };
   status: 'active' | 'on-mission' | 'in-transit' | 'off-duty' | 'unavailable';
   last_seen: string;
   created_at: string;
   updated_at: string;
+  mitigations?: AppliedMitigation[];
 }
 
 const PersonnelDashboard: React.FC = () => {
@@ -584,20 +590,21 @@ const PersonnelDashboard: React.FC = () => {
                   {getStatusIcon(person.status)}
                   <span className="ml-2 capitalize">{person.status.replace('-', ' ')}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center space-x-1">
-                    <Brain className="w-3 h-3 text-purple-500" />
-                    <span className="text-gray-600">AI Risk:</span>
-                    <span className={`font-medium ${person.ai_risk_score.overall <= 30 ? 'text-green-600' : person.ai_risk_score.overall <= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
-                      {getAIRiskLevel(person.ai_risk_score.overall)}
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    {getTrendIcon(person.ai_risk_score.trend)}
-                    <span className="text-xs text-gray-500">
-                      {person.ai_risk_score.confidence}%
-                    </span>
-                  </div>
+              </div>
+              
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-1">
+                  <Brain className="w-3 h-3 text-purple-500" />
+                  <span className="text-xs text-gray-600">AI Risk:</span>
+                  <span className={`text-xs font-medium ${person.ai_risk_score.overall <= 30 ? 'text-green-600' : person.ai_risk_score.overall <= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
+                    {getAIRiskLevel(person.ai_risk_score.overall)}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  {getTrendIcon(person.ai_risk_score.trend)}
+                  <span className="text-xs text-gray-500">
+                    {person.ai_risk_score.confidence}%
+                  </span>
                 </div>
               </div>
               
@@ -659,85 +666,23 @@ const PersonnelDashboard: React.FC = () => {
                   <Brain className="w-5 h-5 text-purple-500" />
                   <span>AI Risk Assessment</span>
                 </h3>
-                <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">Overall Risk Score</span>
-                        <div className="flex items-center space-x-2">
-                          <span className={`text-2xl font-bold ${selectedPersonnel.ai_risk_score.overall <= 30 ? 'text-green-600' : selectedPersonnel.ai_risk_score.overall <= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
-                            {selectedPersonnel.ai_risk_score.overall}
-                          </span>
-                          <span className="text-sm text-gray-500">/100</span>
-                        </div>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-3">
-                        <div
-                          className={`h-3 rounded-full transition-all duration-500 ${
-                            selectedPersonnel.ai_risk_score.overall <= 30 ? 'bg-green-500' :
-                            selectedPersonnel.ai_risk_score.overall <= 70 ? 'bg-yellow-500' :
-                            'bg-red-500'
-                          }`}
-                          style={{ width: `${selectedPersonnel.ai_risk_score.overall}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Trend:</span>
-                        <div className="flex items-center space-x-1">
-                          {getTrendIcon(selectedPersonnel.ai_risk_score.trend)}
-                          <span className="capitalize font-medium">{selectedPersonnel.ai_risk_score.trend}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">AI Confidence:</span>
-                        <span className="font-medium">{selectedPersonnel.ai_risk_score.confidence}%</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Last Updated:</span>
-                        <span className="font-medium">{new Date(selectedPersonnel.ai_risk_score.lastUpdated).toLocaleString()}</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
-                    {Object.entries(selectedPersonnel.ai_risk_score.components).map(([key, value]) => (
-                      <div key={key} className="bg-white rounded-lg p-3 border">
-                        <div className="text-xs font-medium text-gray-500 mb-1 capitalize">
-                          {key.replace('Risk', '')}
-                        </div>
-                        <div className="text-lg font-bold text-gray-900">{value}</div>
-                        <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
-                          <div
-                            className={`h-1 rounded-full ${
-                              value <= 30 ? 'bg-green-500' :
-                              value <= 70 ? 'bg-yellow-500' :
-                              'bg-red-500'
-                            }`}
-                            style={{ width: `${value}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-white rounded-lg p-3 border">
-                      <div className="text-sm font-medium text-gray-700 mb-1">Predicted Next Week</div>
-                      <div className={`text-xl font-bold ${selectedPersonnel.ai_risk_score.predictions.nextWeek <= 30 ? 'text-green-600' : selectedPersonnel.ai_risk_score.predictions.nextWeek <= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {selectedPersonnel.ai_risk_score.predictions.nextWeek}
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg p-3 border">
-                      <div className="text-sm font-medium text-gray-700 mb-1">Predicted Next Month</div>
-                      <div className={`text-xl font-bold ${selectedPersonnel.ai_risk_score.predictions.nextMonth <= 30 ? 'text-green-600' : selectedPersonnel.ai_risk_score.predictions.nextMonth <= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {selectedPersonnel.ai_risk_score.predictions.nextMonth}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <AIRiskInsights
+                  score={selectedPersonnel.ai_risk_score.overall}
+                  explanation={selectedPersonnel.ai_risk_score.explanation || "No AI analysis available for this personnel."}
+                  recommendations={selectedPersonnel.ai_risk_score.recommendations || []}
+                  confidence={selectedPersonnel.ai_risk_score.confidence}
+                  trend={selectedPersonnel.ai_risk_score.trend}
+                  components={selectedPersonnel.ai_risk_score.components}
+                />
               </div>
+
+              {/* Applied Mitigations */}
+              {selectedPersonnel.mitigations && selectedPersonnel.mitigations.length > 0 && (
+                <MitigationDisplay 
+                  mitigations={selectedPersonnel.mitigations}
+                  showCategory={true}
+                />
+              )}
 
               {/* Basic Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
