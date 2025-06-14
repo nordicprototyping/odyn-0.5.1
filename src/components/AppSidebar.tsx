@@ -53,7 +53,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
 
   // Define menu structure with sections
   const menuItems: MenuItemOrSection[] = [
-    { id: 'overview', label: 'AI Dashboard', icon: House, path: '/dashboard' },
+    { id: 'overview', label: 'AI Dashboard', icon: Brain, path: '/dashboard' },
     { id: 'geopolitical', label: 'Geopolitical Risk', icon: Globe, path: '/dashboard/geopolitical' },
     { id: 'risks', label: 'Risk Management', icon: FileText, path: '/dashboard/risks' },
     { id: 'assets', label: 'Asset Security', icon: Shield, path: '/dashboard/assets' },
