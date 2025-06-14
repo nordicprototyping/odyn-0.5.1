@@ -188,11 +188,19 @@ class AIService {
         request.userId = user?.id;
       }
       
+      // Get the current session and access token
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      
+      if (!accessToken) {
+        throw new Error('No access token available');
+      }
+      
       const response = await fetch(`${this.apiUrl}/risk-scoring`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.getSession().then(res => res.data.session?.access_token)}`
+          'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify(request)
       });
