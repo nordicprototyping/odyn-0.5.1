@@ -22,10 +22,10 @@ import {
   ChevronDown,
   ChevronRight,
   Trash2,
-  FileText,
   Eye,
   Edit
 } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
