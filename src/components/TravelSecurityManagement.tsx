@@ -25,7 +25,8 @@ import {
   Building,
   Phone,
   Mail,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react';
 import GoogleMapComponent from './common/GoogleMapComponent';
 import AddTravelPlanForm from './AddTravelPlanForm';
@@ -37,6 +38,7 @@ import { AppliedMitigation } from '../types/mitigation';
 
 type TravelPlan = Database['public']['Tables']['travel_plans']['Row'];
 type TravelPlanInsert = Database['public']['Tables']['travel_plans']['Insert'];
+type TravelPlanUpdate = Database['public']['Tables']['travel_plans']['Update'];
 
 const TravelSecurityManagement: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<TravelPlan | null>(null);
@@ -48,8 +50,9 @@ const TravelSecurityManagement: React.FC = () => {
   const [travelPlans, setTravelPlans] = useState<TravelPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editingTravelPlan, setEditingTravelPlan] = useState<TravelPlan | null>(null);
 
-  const { hasPermission } = useAuth();
+  const { hasPermission, user, profile } = useAuth();
 
   // Add console log to track rendering and state
   console.log('TravelSecurityManagement rendering, showNewPlanForm:', showNewPlanForm);
@@ -81,23 +84,151 @@ const TravelSecurityManagement: React.FC = () => {
     }
   };
 
+  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
+    if (!profile?.organization_id) {
+      console.warn('Cannot log audit event: no organization ID available');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase.from('audit_logs').insert({
+        user_id: user?.id || null,
+        organization_id: profile.organization_id,
+        action,
+        resource_type: 'travel_plan',
+        resource_id: resourceId,
+        details,
+        ip_address: null, // We'll skip IP detection for now
+        user_agent: navigator.userAgent
+      });
+
+      if (error) {
+        console.error('Error logging audit event:', error);
+      }
+    } catch (error) {
+      console.error('Unexpected error logging audit event:', error);
+    }
+  };
+
   const handleAddTravelPlan = async (planData: TravelPlanInsert) => {
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('travel_plans')
-        .insert([planData]);
+        .insert([planData])
+        .select()
+        .single();
 
       if (error) {
         throw error;
       }
 
+      // Log the creation in audit logs
+      if (data) {
+        await logAuditEvent('travel_plan_created', data.id, { 
+          traveler_name: planData.traveler_name,
+          destination: planData.destination,
+          departure_date: planData.departure_date
+        });
+      }
+
       // Refresh the travel plans list
       await fetchTravelPlans();
       setShowNewPlanForm(false);
+      setEditingTravelPlan(null);
     } catch (err) {
       console.error('Error adding travel plan:', err);
       throw err;
     }
+  };
+
+  const handleUpdateTravelPlan = async (planData: TravelPlanUpdate) => {
+    if (!editingTravelPlan) return;
+    
+    try {
+      const { error } = await supabase
+        .from('travel_plans')
+        .update(planData)
+        .eq('id', editingTravelPlan.id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Log the update in audit logs
+      await logAuditEvent('travel_plan_updated', editingTravelPlan.id, { 
+        traveler_name: planData.traveler_name,
+        destination: planData.destination,
+        departure_date: planData.departure_date
+      });
+
+      // Refresh the travel plans list
+      await fetchTravelPlans();
+      setShowNewPlanForm(false);
+      setEditingTravelPlan(null);
+      
+      // If the updated plan was selected, refresh the selected plan
+      if (selectedRequest && selectedRequest.id === editingTravelPlan.id) {
+        const { data } = await supabase
+          .from('travel_plans')
+          .select('*')
+          .eq('id', editingTravelPlan.id)
+          .single();
+          
+        if (data) {
+          setSelectedRequest(data);
+        }
+      }
+    } catch (err) {
+      console.error('Error updating travel plan:', err);
+      throw err;
+    }
+  };
+
+  const handleDeleteTravelPlan = async (planId: string, planName: string) => {
+    // Ask for confirmation before deleting
+    const confirmDelete = window.confirm(`Are you sure you want to delete the travel plan for "${planName}"? This action cannot be undone.`);
+    
+    if (!confirmDelete) {
+      return; // User cancelled the operation
+    }
+    
+    try {
+      setLoading(true);
+      
+      // Delete the travel plan from the database
+      const { error } = await supabase
+        .from('travel_plans')
+        .delete()
+        .eq('id', planId);
+
+      if (error) {
+        throw error;
+      }
+
+      // Log the deletion in audit logs
+      await logAuditEvent('travel_plan_deleted', planId, { 
+        deleted_at: new Date().toISOString()
+      });
+
+      // Close the detail view if the deleted plan was selected
+      if (selectedRequest?.id === planId) {
+        setSelectedRequest(null);
+      }
+      
+      // Refresh the travel plans list
+      await fetchTravelPlans();
+      
+    } catch (err) {
+      console.error('Error deleting travel plan:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete travel plan');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditTravelPlan = (travelPlan: TravelPlan) => {
+    setEditingTravelPlan(travelPlan);
+    setShowNewPlanForm(true);
   };
 
   const getRiskColor = (score: number) => {
@@ -197,7 +328,7 @@ const TravelSecurityManagement: React.FC = () => {
     return { lat: avgLat, lng: avgLng };
   }, [filteredRequests]);
 
-  if (loading) {
+  if (loading && travelPlans.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
@@ -239,6 +370,7 @@ const TravelSecurityManagement: React.FC = () => {
             onClick={() => {
               console.log('New Plan button clicked, setting showNewPlanForm to true');
               setShowNewPlanForm(true);
+              setEditingTravelPlan(null); // Ensure we're in "add" mode, not "edit" mode
             }}
             className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
@@ -489,33 +621,60 @@ const TravelSecurityManagement: React.FC = () => {
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-900 max-w-xs truncate">{request.purpose}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => setSelectedRequest(request)}
-                          className="text-blue-600 hover:text-blue-900 mr-3"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        {hasPermission('travel.update') && (
-                          <button className="text-gray-600 hover:text-gray-900">
-                            <Edit className="w-4 h-4" />
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => setSelectedRequest(request)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="View details"
+                          >
+                            <Eye className="w-4 h-4" />
                           </button>
-                        )}
+                          {hasPermission('travel.update') && (
+                            <button 
+                              onClick={() => handleEditTravelPlan(request)}
+                              className="text-gray-600 hover:text-gray-900"
+                              title="Edit travel plan"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          )}
+                          {hasPermission('travel.delete') && (
+                            <button 
+                              onClick={() => handleDeleteTravelPlan(request.id, request.traveler_name)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Delete travel plan"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
+                {filteredRequests.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                      No travel plans found matching your filters
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* Add Travel Plan Form Modal */}
+      {/* Add/Edit Travel Plan Form Modal */}
       {showNewPlanForm && (
         <AddTravelPlanForm
-          onClose={() => setShowNewPlanForm(false)}
-          onSubmit={handleAddTravelPlan}
+          onClose={() => {
+            setShowNewPlanForm(false);
+            setEditingTravelPlan(null);
+          }}
+          onSubmit={editingTravelPlan ? handleUpdateTravelPlan : handleAddTravelPlan}
+          travelPlanToEdit={editingTravelPlan}
         />
       )}
 
@@ -540,12 +699,37 @@ const TravelSecurityManagement: React.FC = () => {
                     </span>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedRequest(null)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <XCircle className="w-6 h-6" />
-                </button>
+                <div className="flex items-center space-x-2">
+                  {hasPermission('travel.update') && (
+                    <button
+                      onClick={() => {
+                        handleEditTravelPlan(selectedRequest);
+                        setSelectedRequest(null);
+                      }}
+                      className="p-2 text-blue-600 hover:text-blue-800 transition-colors"
+                      title="Edit travel plan"
+                    >
+                      <Edit className="w-5 h-5" />
+                    </button>
+                  )}
+                  {hasPermission('travel.delete') && (
+                    <button
+                      onClick={() => {
+                        handleDeleteTravelPlan(selectedRequest.id, selectedRequest.traveler_name);
+                      }}
+                      className="p-2 text-red-600 hover:text-red-800 transition-colors"
+                      title="Delete travel plan"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelectedRequest(null)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
             </div>
             
@@ -646,6 +830,49 @@ const TravelSecurityManagement: React.FC = () => {
                             <li key={index} className="text-sm">• {meeting}</li>
                           ))}
                         </ul>
+                      </div>
+                    )}
+                    
+                    {/* Timeline blocks */}
+                    {(selectedRequest.itinerary as any)?.timeline && (selectedRequest.itinerary as any).timeline.length > 0 && (
+                      <div>
+                        <label className="text-sm font-medium text-gray-500 mb-2 block">Timeline</label>
+                        <div className="space-y-2">
+                          {(selectedRequest.itinerary as any).timeline.map((block: any, index: number) => (
+                            <div key={index} className="bg-white p-3 rounded border border-gray-200 text-sm">
+                              {block.type === 'location' && (
+                                <div>
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <MapPin className="w-3 h-3 text-green-500" />
+                                    <span className="font-medium">{block.data.name}</span>
+                                  </div>
+                                  <p className="text-gray-600 text-xs">{block.data.address}, {block.data.city}</p>
+                                  {block.data.purpose && <p className="text-gray-700 text-xs mt-1">Purpose: {block.data.purpose}</p>}
+                                </div>
+                              )}
+                              {block.type === 'transport' && (
+                                <div>
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <Plane className="w-3 h-3 text-blue-500" />
+                                    <span className="font-medium capitalize">{block.data.mode} Transport</span>
+                                  </div>
+                                  <p className="text-gray-600 text-xs">{block.data.from} → {block.data.to}</p>
+                                  {block.data.provider && <p className="text-gray-700 text-xs mt-1">Provider: {block.data.provider}</p>}
+                                </div>
+                              )}
+                              {block.type === 'accommodation' && (
+                                <div>
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <Building className="w-3 h-3 text-purple-500" />
+                                    <span className="font-medium">{block.data.name}</span>
+                                  </div>
+                                  <p className="text-gray-600 text-xs">{block.data.address}, {block.data.city}</p>
+                                  {block.data.roomType && <p className="text-gray-700 text-xs mt-1">Room: {block.data.roomType}</p>}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>

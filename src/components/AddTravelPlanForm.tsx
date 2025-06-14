@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plane, MapPin, Calendar, User, Shield, Phone, FileText, AlertTriangle, Save, Loader2, Brain } from 'lucide-react';
 import { Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -8,14 +8,17 @@ import { aiService } from '../services/aiService';
 import MitigationSelector from './MitigationSelector';
 import { AppliedMitigation } from '../types/mitigation';
 
+type TravelPlan = Database['public']['Tables']['travel_plans']['Row'];
 type TravelPlanInsert = Database['public']['Tables']['travel_plans']['Insert'];
+type TravelPlanUpdate = Database['public']['Tables']['travel_plans']['Update'];
 
 interface AddTravelPlanFormProps {
   onClose: () => void;
-  onSubmit: (data: TravelPlanInsert) => Promise<void>;
+  onSubmit: (data: TravelPlanInsert | TravelPlanUpdate) => Promise<void>;
+  travelPlanToEdit?: TravelPlan | null;
 }
 
-const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit }) => {
+const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit, travelPlanToEdit }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'basic' | 'itinerary' | 'risk'>('basic');
@@ -25,6 +28,9 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
   
   const { user, profile } = useAuth();
 
+  const isEditMode = !!travelPlanToEdit;
+
+  // Initialize form data based on whether we're editing or creating
   const [formData, setFormData] = useState({
     traveler_name: profile?.full_name || '',
     traveler_employee_id: '',
@@ -67,6 +73,39 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
     }
   });
 
+  // Update form data when editing an existing travel plan
+  useEffect(() => {
+    if (travelPlanToEdit) {
+      // Extract timeline blocks from the travel plan's itinerary
+      const existingTimelineBlocks = (travelPlanToEdit.itinerary as any)?.timeline || [];
+      setTimelineBlocks(existingTimelineBlocks);
+      
+      // Extract mitigations if they exist
+      if (travelPlanToEdit.mitigations && Array.isArray(travelPlanToEdit.mitigations)) {
+        setMitigations(travelPlanToEdit.mitigations as AppliedMitigation[]);
+      }
+      
+      // Set form data from the travel plan
+      setFormData({
+        traveler_name: travelPlanToEdit.traveler_name,
+        traveler_employee_id: travelPlanToEdit.traveler_employee_id,
+        traveler_department: travelPlanToEdit.traveler_department,
+        traveler_clearance_level: travelPlanToEdit.traveler_clearance_level,
+        destination: travelPlanToEdit.destination as any,
+        origin: travelPlanToEdit.origin as any,
+        departure_date: new Date(travelPlanToEdit.departure_date).toISOString().slice(0, 16),
+        return_date: new Date(travelPlanToEdit.return_date).toISOString().slice(0, 16),
+        purpose: travelPlanToEdit.purpose,
+        emergency_contacts: travelPlanToEdit.emergency_contacts as any,
+        itinerary: {
+          ...(travelPlanToEdit.itinerary as any),
+          timeline: existingTimelineBlocks
+        },
+        risk_assessment: travelPlanToEdit.risk_assessment as any
+      });
+    }
+  }, [travelPlanToEdit]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -88,7 +127,8 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
         throw new Error('Return date must be after departure date');
       }
 
-      if (departureDate < new Date()) {
+      // Only validate departure date is in the future for new plans, not when editing
+      if (!isEditMode && departureDate < new Date()) {
         throw new Error('Departure date cannot be in the past');
       }
 
@@ -101,85 +141,137 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
         }
       };
 
-      // Prepare travel plan data for AI risk scoring
-      const travelPlanData = {
-        organization_id: profile?.organization_id || '',
-        traveler_name: updatedFormData.traveler_name,
-        traveler_employee_id: updatedFormData.traveler_employee_id,
-        traveler_department: updatedFormData.traveler_department,
-        traveler_clearance_level: updatedFormData.traveler_clearance_level,
-        destination: updatedFormData.destination,
-        origin: updatedFormData.origin,
-        departure_date: updatedFormData.departure_date,
-        return_date: updatedFormData.return_date,
-        purpose: updatedFormData.purpose,
-        itinerary: updatedFormData.itinerary
-      };
-
-      // Set AI scoring state to show loading indicator
-      setAiScoring(true);
-
-      // Call AI service to get risk score
-      let aiRiskAssessment = { ...formData.risk_assessment };
-      
-      try {
-        const aiResult = await aiService.scoreTravelRisk(travelPlanData);
-        
-        // Update risk assessment with AI-calculated values
-        aiRiskAssessment = {
-          overall: aiResult.score,
-          components: aiResult.components || aiRiskAssessment.components,
-          aiConfidence: aiResult.confidence,
-          recommendations: aiResult.recommendations || [],
-          explanation: aiResult.explanation,
-          trend: aiResult.trend || 'stable'
+      // For new plans, calculate AI risk score
+      if (!isEditMode) {
+        // Prepare travel plan data for AI risk scoring
+        const travelPlanData = {
+          organization_id: profile?.organization_id || '',
+          traveler_name: updatedFormData.traveler_name,
+          traveler_employee_id: updatedFormData.traveler_employee_id,
+          traveler_department: updatedFormData.traveler_department,
+          traveler_clearance_level: updatedFormData.traveler_clearance_level,
+          destination: updatedFormData.destination,
+          origin: updatedFormData.origin,
+          departure_date: updatedFormData.departure_date,
+          return_date: updatedFormData.return_date,
+          purpose: updatedFormData.purpose,
+          itinerary: updatedFormData.itinerary
         };
-      } catch (aiError) {
-        console.error('Error getting AI risk score:', aiError);
-        // Continue with default risk assessment if AI scoring fails
-      } finally {
-        setAiScoring(false);
+
+        // Set AI scoring state to show loading indicator
+        setAiScoring(true);
+
+        // Call AI service to get risk score
+        let aiRiskAssessment = { ...formData.risk_assessment };
+        
+        try {
+          const aiResult = await aiService.scoreTravelRisk(travelPlanData);
+          
+          // Update risk assessment with AI-calculated values
+          aiRiskAssessment = {
+            overall: aiResult.score,
+            components: aiResult.components || aiRiskAssessment.components,
+            aiConfidence: aiResult.confidence,
+            recommendations: aiResult.recommendations || [],
+            explanation: aiResult.explanation,
+            trend: aiResult.trend || 'stable'
+          };
+        } catch (aiError) {
+          console.error('Error getting AI risk score:', aiError);
+          // Continue with default risk assessment if AI scoring fails
+        } finally {
+          setAiScoring(false);
+        }
+        
+        // Calculate effective risk score based on mitigations
+        const totalRiskReduction = mitigations.reduce(
+          (sum, mitigation) => sum + mitigation.applied_risk_reduction_score, 
+          0
+        );
+        
+        // Ensure risk score doesn't go below 0
+        const effectiveRiskScore = Math.max(0, aiRiskAssessment.overall - totalRiskReduction);
+        
+        // Update the risk assessment with the effective value
+        const updatedRiskAssessment = {
+          ...aiRiskAssessment,
+          overall: effectiveRiskScore,
+          mitigationApplied: totalRiskReduction > 0,
+          originalScore: aiRiskAssessment.overall,
+          totalRiskReduction
+        };
+
+        // Prepare final data for new travel plan
+        const travelPlanDataFinal: TravelPlanInsert = {
+          organization_id: profile?.organization_id || '',
+          traveler_user_id: user?.id || null,
+          traveler_name: updatedFormData.traveler_name,
+          traveler_employee_id: updatedFormData.traveler_employee_id,
+          traveler_department: updatedFormData.traveler_department,
+          traveler_clearance_level: updatedFormData.traveler_clearance_level,
+          destination: updatedFormData.destination,
+          origin: updatedFormData.origin,
+          departure_date: updatedFormData.departure_date,
+          return_date: updatedFormData.return_date,
+          purpose: updatedFormData.purpose,
+          status: 'pending',
+          risk_assessment: updatedRiskAssessment,
+          emergency_contacts: updatedFormData.emergency_contacts,
+          itinerary: updatedFormData.itinerary,
+          documents: [],
+          mitigations: mitigations.length > 0 ? mitigations : null
+        };
+
+        await onSubmit(travelPlanDataFinal);
+      } else {
+        // For editing, we don't recalculate AI risk score unless explicitly requested
+        // Just update the existing travel plan with the new values
+        
+        // Calculate effective risk score based on mitigations if they've changed
+        let updatedRiskAssessment = formData.risk_assessment;
+        
+        if (mitigations.length > 0) {
+          const totalRiskReduction = mitigations.reduce(
+            (sum, mitigation) => sum + mitigation.applied_risk_reduction_score, 
+            0
+          );
+          
+          // Get the original score (before mitigation) if available, otherwise use current overall
+          const originalScore = (formData.risk_assessment as any).originalScore || formData.risk_assessment.overall;
+          
+          // Ensure risk score doesn't go below 0
+          const effectiveRiskScore = Math.max(0, originalScore - totalRiskReduction);
+          
+          // Update the risk assessment with the effective value
+          updatedRiskAssessment = {
+            ...formData.risk_assessment,
+            overall: effectiveRiskScore,
+            mitigationApplied: totalRiskReduction > 0,
+            originalScore: originalScore,
+            totalRiskReduction
+          };
+        }
+
+        // Prepare update data
+        const travelPlanUpdateData: TravelPlanUpdate = {
+          traveler_name: updatedFormData.traveler_name,
+          traveler_employee_id: updatedFormData.traveler_employee_id,
+          traveler_department: updatedFormData.traveler_department,
+          traveler_clearance_level: updatedFormData.traveler_clearance_level,
+          destination: updatedFormData.destination,
+          origin: updatedFormData.origin,
+          departure_date: updatedFormData.departure_date,
+          return_date: updatedFormData.return_date,
+          purpose: updatedFormData.purpose,
+          risk_assessment: updatedRiskAssessment,
+          emergency_contacts: updatedFormData.emergency_contacts,
+          itinerary: updatedFormData.itinerary,
+          mitigations: mitigations.length > 0 ? mitigations : null,
+          updated_at: new Date().toISOString()
+        };
+
+        await onSubmit(travelPlanUpdateData);
       }
-      
-      // Calculate effective risk score based on mitigations
-      const totalRiskReduction = mitigations.reduce(
-        (sum, mitigation) => sum + mitigation.applied_risk_reduction_score, 
-        0
-      );
-      
-      // Ensure risk score doesn't go below 0
-      const effectiveRiskScore = Math.max(0, aiRiskAssessment.overall - totalRiskReduction);
-      
-      // Update the risk assessment with the effective value
-      const updatedRiskAssessment = {
-        ...aiRiskAssessment,
-        overall: effectiveRiskScore,
-        mitigationApplied: totalRiskReduction > 0,
-        originalScore: aiRiskAssessment.overall,
-        totalRiskReduction
-      };
-
-      const travelPlanDataFinal: TravelPlanInsert = {
-        organization_id: profile?.organization_id || '',
-        traveler_user_id: user?.id || null,
-        traveler_name: updatedFormData.traveler_name,
-        traveler_employee_id: updatedFormData.traveler_employee_id,
-        traveler_department: updatedFormData.traveler_department,
-        traveler_clearance_level: updatedFormData.traveler_clearance_level,
-        destination: updatedFormData.destination,
-        origin: updatedFormData.origin,
-        departure_date: updatedFormData.departure_date,
-        return_date: updatedFormData.return_date,
-        purpose: updatedFormData.purpose,
-        status: 'pending',
-        risk_assessment: updatedRiskAssessment,
-        emergency_contacts: updatedFormData.emergency_contacts,
-        itinerary: updatedFormData.itinerary,
-        documents: [],
-        mitigations: mitigations.length > 0 ? mitigations : null
-      };
-
-      await onSubmit(travelPlanDataFinal);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit travel plan');
     } finally {
@@ -257,8 +349,12 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
                 <Plane className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">New Travel Plan</h2>
-                <p className="text-gray-600">Submit a new travel plan for approval</p>
+                <h2 className="text-xl font-bold text-gray-900">
+                  {isEditMode ? 'Edit Travel Plan' : 'New Travel Plan'}
+                </h2>
+                <p className="text-gray-600">
+                  {isEditMode ? 'Update travel plan details' : 'Submit a new travel plan for approval'}
+                </p>
               </div>
             </div>
             <button
@@ -566,6 +662,76 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
           {/* Itinerary Builder */}
           {activeTab === 'itinerary' && (
             <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Accommodation
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.itinerary.accommodation}
+                    onChange={(e) => updateFormData('itinerary.accommodation', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="e.g., Hotel name, Secure facility, etc."
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Transportation
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.itinerary.transportation}
+                    onChange={(e) => updateFormData('itinerary.transportation', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="e.g., Commercial flight, Secure vehicle, etc."
+                  />
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Scheduled Meetings
+                </label>
+                <div className="space-y-2">
+                  {formData.itinerary.meetings.map((meeting, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        value={meeting}
+                        onChange={(e) => {
+                          const updatedMeetings = [...formData.itinerary.meetings];
+                          updatedMeetings[index] = e.target.value;
+                          updateFormData('itinerary.meetings', updatedMeetings);
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Meeting description"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updatedMeetings = formData.itinerary.meetings.filter((_, i) => i !== index);
+                          updateFormData('itinerary.meetings', updatedMeetings);
+                        }}
+                        className="p-2 text-red-500 hover:text-red-700 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateFormData('itinerary.meetings', [...formData.itinerary.meetings, '']);
+                    }}
+                    className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
+                  >
+                    + Add Meeting
+                  </button>
+                </div>
+              </div>
+              
               <TimelineBuilder 
                 blocks={timelineBlocks}
                 onChange={handleTimelineChange}
@@ -583,10 +749,18 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
                 </h3>
                 <div className="bg-purple-50 rounded-lg p-6 border border-purple-200">
                   <p className="text-sm text-purple-700 mb-4">
-                    AI risk assessment will be automatically calculated when you submit the travel plan. 
-                    The assessment will consider factors such as destination, purpose, traveler profile, 
-                    and current geopolitical conditions.
+                    {isEditMode ? 
+                      "The AI risk assessment was calculated when this travel plan was created. You can add or modify mitigations below to adjust the risk score." :
+                      "AI risk assessment will be automatically calculated when you submit the travel plan. The assessment will consider factors such as destination, purpose, traveler profile, and current geopolitical conditions."
+                    }
                   </p>
+                  
+                  {isEditMode && (formData.risk_assessment as any).explanation && (
+                    <div className="bg-white rounded-lg p-4 border border-purple-200 mb-4">
+                      <h4 className="text-sm font-medium text-purple-800 mb-2">AI Analysis</h4>
+                      <p className="text-sm text-gray-700">{(formData.risk_assessment as any).explanation}</p>
+                    </div>
+                  )}
                   
                   <div className="bg-white rounded-lg p-4 border border-purple-200 mb-4">
                     <h4 className="text-sm font-medium text-purple-800 mb-2">Recommendations</h4>
@@ -682,12 +856,12 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
                 {loading || aiScoring ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>{aiScoring ? 'Calculating AI Risk Score...' : 'Submitting...'}</span>
+                    <span>{aiScoring ? 'Calculating AI Risk Score...' : isEditMode ? 'Updating...' : 'Submitting...'}</span>
                   </>
                 ) : (
                   <>
                     <Save className="w-4 h-4" />
-                    <span>Submit Travel Plan</span>
+                    <span>{isEditMode ? 'Update Travel Plan' : 'Submit Travel Plan'}</span>
                   </>
                 )}
               </button>
