@@ -15,10 +15,7 @@ import {
   User, 
   Crown, 
   UserCheck,
-  Building,
-  Building2,
-  LayoutDashboard,
-  TriangleAlert
+  Building
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -56,11 +53,11 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
 
   // Define menu structure with sections
   const menuItems: MenuItemOrSection[] = [
-    { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+    { id: 'overview', label: 'AI Dashboard', icon: Brain, path: '/dashboard' },
     { id: 'geopolitical', label: 'Geopolitical Risk', icon: Globe, path: '/dashboard/geopolitical' },
-    { id: 'risks', label: 'Risks', icon: TriangleAlert, path: '/dashboard/risks' },
-    { id: 'assets', label: 'Assets', icon: Building2, path: '/dashboard/assets' },
-    { id: 'personnel', label: 'Personnel', icon: Users, path: '/dashboard/personnel' },
+    { id: 'risks', label: 'Risk Management', icon: FileText, path: '/dashboard/risks' },
+    { id: 'assets', label: 'Asset Security', icon: Shield, path: '/dashboard/assets' },
+    { id: 'personnel', label: 'Personnel Security', icon: Users, path: '/dashboard/personnel' },
     { id: 'travel', label: 'Travel Security', icon: Plane, path: '/dashboard/travel' },
     { id: 'incidents', label: 'Incident Management', icon: AlertCircle, path: '/dashboard/incidents' },
     { id: 'mitigations', label: 'Mitigation Management', icon: Shield, path: '/dashboard/mitigations' },
