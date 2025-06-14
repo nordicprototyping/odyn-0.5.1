@@ -124,6 +124,9 @@ async function scoreAssetRisk(assetData: any, organizationId: string, userId: st
     You should also provide component scores for different risk factors, a confidence score (0-100), 
     a trend assessment (improving, stable, or deteriorating), and predictions for future risk.
     
+    IMPORTANT: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
+    Do not use <think> tags or any other non-JSON content in your response.
+    
     Format your response as valid JSON with the following structure:
     {
       "score": number,
@@ -178,6 +181,8 @@ async function scoreAssetRisk(assetData: any, organizationId: string, userId: st
     6. Historical incident data
     
     Provide a detailed risk assessment with specific recommendations for risk mitigation.
+    
+    REMEMBER: Respond with ONLY valid JSON. No explanatory text, markdown, or code blocks.
   `;
   
   try {
@@ -220,6 +225,198 @@ async function scoreAssetRisk(assetData: any, organizationId: string, userId: st
   }
 }
 
+// Function to score personnel risk
+async function scorePersonnelRisk(personnelData: any, organizationId: string, userId: string | null): Promise<RiskScoringResponse> {
+  const systemPrompt = `
+    You are an expert AI security risk analyst specializing in personnel security assessment.
+    Your task is to analyze the provided personnel data and calculate a risk score from 0-100 (where higher means more risk).
+    You should also provide component scores for different risk factors, a confidence score (0-100), 
+    a trend assessment (improving, stable, or deteriorating), and predictions for future risk.
+    
+    IMPORTANT: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
+    Do not use <think> tags or any other non-JSON content in your response.
+    
+    Format your response as valid JSON with the following structure:
+    {
+      "score": number,
+      "components": {
+        "behavioralRisk": number,
+        "travelRisk": number,
+        "accessRisk": number,
+        "complianceRisk": number,
+        "geographicRisk": number
+      },
+      "confidence": number,
+      "explanation": "string",
+      "recommendations": ["string", "string", ...],
+      "trend": "improving" | "stable" | "deteriorating",
+      "predictions": {
+        "nextWeek": number,
+        "nextMonth": number
+      }
+    }
+  `;
+  
+  const prompt = `
+    Please analyze the following personnel data and provide a comprehensive risk assessment:
+    
+    Name: ${personnelData.name}
+    Employee ID: ${personnelData.employee_id}
+    Category: ${personnelData.category}
+    Department: ${personnelData.department}
+    Current Location: ${personnelData.current_location.city}, ${personnelData.current_location.country}
+    Work Location: ${personnelData.work_location}
+    Clearance Level: ${personnelData.clearance_level}
+    Status: ${personnelData.status}
+    
+    Travel Status:
+    - Current: ${personnelData.travel_status.current}
+    - Active Travel: ${personnelData.travel_status.isActive ? 'Yes' : 'No'}
+    
+    Consider factors such as:
+    1. The personnel's clearance level and access to sensitive information
+    2. Current location and geopolitical risk factors
+    3. Travel status and associated risks
+    4. Role and responsibilities
+    5. Department-specific risk factors
+    
+    Provide a detailed risk assessment with specific recommendations for risk mitigation.
+    
+    REMEMBER: Respond with ONLY valid JSON. No explanatory text, markdown, or code blocks.
+  `;
+  
+  try {
+    const result = await callChutesAI(prompt, systemPrompt);
+    
+    // Log token usage
+    if (result.usage && result.usage.total_tokens) {
+      await logTokenUsage(organizationId, userId, 'personnel', result.usage.total_tokens);
+    }
+    
+    // Parse the response
+    const riskAssessment = JSON.parse(result.content);
+    return riskAssessment;
+  } catch (error) {
+    console.error('Error in scorePersonnelRisk:', error);
+    
+    // Return a fallback response
+    return {
+      score: 45,
+      components: {
+        behavioralRisk: 30,
+        travelRisk: 50,
+        accessRisk: 40,
+        complianceRisk: 35,
+        geographicRisk: 55
+      },
+      confidence: 75,
+      explanation: "Unable to perform AI risk assessment due to an error. This is a default risk score based on the personnel category and location.",
+      recommendations: [
+        "Review security clearance and access levels",
+        "Provide additional security training",
+        "Implement regular check-ins during travel"
+      ],
+      trend: "stable",
+      predictions: {
+        nextWeek: 45,
+        nextMonth: 48
+      }
+    };
+  }
+}
+
+// Function to score travel risk
+async function scoreTravelRisk(travelData: any, organizationId: string, userId: string | null): Promise<RiskScoringResponse> {
+  const systemPrompt = `
+    You are an expert AI security risk analyst specializing in travel security assessment.
+    Your task is to analyze the provided travel plan data and calculate a risk score from 0-100 (where higher means more risk).
+    You should also provide component scores for different risk factors, a confidence score (0-100), 
+    a trend assessment (improving, stable, or deteriorating), and specific recommendations.
+    
+    IMPORTANT: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
+    Do not use <think> tags or any other non-JSON content in your response.
+    
+    Format your response as valid JSON with the following structure:
+    {
+      "score": number,
+      "components": {
+        "geopolitical": number,
+        "security": number,
+        "health": number,
+        "environmental": number,
+        "transportation": number
+      },
+      "confidence": number,
+      "explanation": "string",
+      "recommendations": ["string", "string", ...],
+      "trend": "improving" | "stable" | "deteriorating"
+    }
+  `;
+  
+  const prompt = `
+    Please analyze the following travel plan and provide a comprehensive risk assessment:
+    
+    Traveler: ${travelData.traveler_name}
+    Department: ${travelData.traveler_department}
+    Clearance Level: ${travelData.traveler_clearance_level}
+    
+    Origin: ${travelData.origin.city}, ${travelData.origin.country}
+    Destination: ${travelData.destination.city}, ${travelData.destination.country}
+    
+    Departure Date: ${travelData.departure_date}
+    Return Date: ${travelData.return_date}
+    
+    Purpose: ${travelData.purpose}
+    
+    Consider factors such as:
+    1. The destination's geopolitical stability and security situation
+    2. The traveler's profile and clearance level
+    3. Duration and purpose of travel
+    4. Local health and environmental risks
+    5. Transportation security concerns
+    
+    Provide a detailed risk assessment with specific recommendations for risk mitigation.
+    
+    REMEMBER: Respond with ONLY valid JSON. No explanatory text, markdown, or code blocks.
+  `;
+  
+  try {
+    const result = await callChutesAI(prompt, systemPrompt);
+    
+    // Log token usage
+    if (result.usage && result.usage.total_tokens) {
+      await logTokenUsage(organizationId, userId, 'travel', result.usage.total_tokens);
+    }
+    
+    // Parse the response
+    const riskAssessment = JSON.parse(result.content);
+    return riskAssessment;
+  } catch (error) {
+    console.error('Error in scoreTravelRisk:', error);
+    
+    // Return a fallback response
+    return {
+      score: 55,
+      components: {
+        geopolitical: 60,
+        security: 55,
+        health: 40,
+        environmental: 35,
+        transportation: 50
+      },
+      confidence: 70,
+      explanation: "Unable to perform AI risk assessment due to an error. This is a default risk score based on the destination country and travel purpose.",
+      recommendations: [
+        "Conduct pre-travel security briefing",
+        "Register with local embassy or consulate",
+        "Establish regular check-in protocol",
+        "Prepare emergency evacuation plan"
+      ],
+      trend: "stable"
+    };
+  }
+}
+
 // Function to score organization risk
 async function scoreOrganizationRisk(organizationId: string, userId: string | null, aggregateData: any): Promise<RiskScoringResponse> {
   const systemPrompt = `
@@ -227,6 +424,9 @@ async function scoreOrganizationRisk(organizationId: string, userId: string | nu
     Your task is to analyze the provided organization data and calculate an overall risk score from 0-100 (where higher means more risk).
     You should also provide component scores for different risk factors, a confidence score (0-100), 
     a trend assessment (improving, stable, or deteriorating), and specific recommendations.
+    
+    IMPORTANT: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
+    Do not use <think> tags or any other non-JSON content in your response.
     
     Format your response as valid JSON with the following structure:
     {
@@ -282,6 +482,8 @@ async function scoreOrganizationRisk(organizationId: string, userId: string | nu
     6. Geopolitical factors affecting organizational risk
     
     Provide a detailed risk assessment with specific recommendations for risk mitigation.
+    
+    REMEMBER: Respond with ONLY valid JSON. No explanatory text, markdown, or code blocks.
   `;
   
   try {
@@ -369,6 +571,12 @@ Deno.serve(async (req) => {
     switch (requestData.type) {
       case 'asset':
         response = await scoreAssetRisk(requestData.data, requestData.organizationId, requestData.userId || user.id);
+        break;
+      case 'personnel':
+        response = await scorePersonnelRisk(requestData.data, requestData.organizationId, requestData.userId || user.id);
+        break;
+      case 'travel':
+        response = await scoreTravelRisk(requestData.data, requestData.organizationId, requestData.userId || user.id);
         break;
       case 'organization':
         response = await scoreOrganizationRisk(requestData.organizationId, requestData.userId || user.id, requestData.data);
