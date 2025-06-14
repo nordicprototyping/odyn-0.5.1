@@ -1,122 +1,105 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Settings,
-  Building,
-  Shield,
-  Users,
-  Globe,
-  Mail,
-  Phone,
-  MapPin,
-  Save,
-  AlertCircle,
-  CheckCircle,
-  Eye,
-  EyeOff,
-  Key,
-  Lock,
-  Bell,
-  Clock,
-  Database,
-  Server,
-  Wifi,
-  Monitor,
-  Loader2,
+import { 
+  Settings, 
+  Building, 
+  Shield, 
+  Bell, 
+  Globe, 
+  Save, 
+  Loader2, 
+  AlertCircle, 
+  CheckCircle, 
+  X,
   Brain,
-  Zap,
-  BarChart,
-  Sliders,
-  MessageSquare,
-  AlertTriangle,
-  X
+  Zap
 } from 'lucide-react';
-import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../hooks/useAuth';
+import AIUsageMonitoring from './AIUsageMonitoring';
 
-interface OrganizationConfig {
-  general: {
-    name: string;
-    description: string;
-    website: string;
-    industry: string;
-    size: string;
-    headquarters: {
-      address: string;
-      city: string;
-      country: string;
-      timezone: string;
+interface OrganizationSettings {
+  general?: {
+    description?: string;
+    website?: string;
+    industry?: string;
+    size?: string;
+    headquarters?: {
+      address?: string;
+      city?: string;
+      country?: string;
+      timezone?: string;
     };
-    contact: {
-      email: string;
-      phone: string;
-      emergencyPhone: string;
-    };
-  };
-  security: {
-    passwordPolicy: {
-      minLength: number;
-      requireUppercase: boolean;
-      requireLowercase: boolean;
-      requireNumbers: boolean;
-      requireSpecialChars: boolean;
-      maxAge: number;
-      preventReuse: number;
-    };
-    sessionPolicy: {
-      maxDuration: number;
-      idleTimeout: number;
-      maxConcurrentSessions: number;
-      requireReauth: boolean;
-    };
-    twoFactorAuth: {
-      required: boolean;
-      allowedMethods: string[];
-      backupCodes: boolean;
-    };
-    accessControl: {
-      defaultRole: string;
-      autoLockAccount: boolean;
-      maxFailedAttempts: number;
-      lockoutDuration: number;
+    contact?: {
+      email?: string;
+      phone?: string;
+      emergencyPhone?: string;
     };
   };
-  notifications: {
-    email: {
-      enabled: boolean;
-      smtp: {
-        host: string;
-        port: number;
-        secure: boolean;
-        username: string;
-        password: string;
+  security?: {
+    passwordPolicy?: {
+      minLength?: number;
+      requireUppercase?: boolean;
+      requireLowercase?: boolean;
+      requireNumbers?: boolean;
+      requireSpecialChars?: boolean;
+      maxAge?: number;
+      preventReuse?: number;
+    };
+    sessionPolicy?: {
+      maxDuration?: number;
+      idleTimeout?: number;
+      maxConcurrentSessions?: number;
+      requireReauth?: boolean;
+    };
+    twoFactorAuth?: {
+      required?: boolean;
+      allowedMethods?: string[];
+      backupCodes?: boolean;
+    };
+    accessControl?: {
+      defaultRole?: string;
+      autoLockAccount?: boolean;
+      maxFailedAttempts?: number;
+      lockoutDuration?: number;
+    };
+  };
+  notifications?: {
+    email?: {
+      enabled?: boolean;
+      smtp?: {
+        host?: string;
+        port?: number;
+        secure?: boolean;
+        username?: string;
+        password?: string;
       };
     };
-    alerts: {
-      securityIncidents: boolean;
-      systemMaintenance: boolean;
-      userActivity: boolean;
-      riskAssessments: boolean;
+    alerts?: {
+      securityIncidents?: boolean;
+      systemMaintenance?: boolean;
+      userActivity?: boolean;
+      riskAssessments?: boolean;
     };
-    thresholds: {
-      highRiskScore: number;
-      criticalRiskScore: number;
-      unusualActivity: boolean;
-      geopoliticalEvents: boolean;
-      travelRisks: boolean;
-    };
-  };
-  integrations: {
-    googleMaps: {
-      enabled: boolean;
-      apiKey: string;
-    };
-    externalSystems: {
-      enabled: boolean;
-      endpoints: string[];
+    thresholds?: {
+      highRiskScore?: number;
+      criticalRiskScore?: number;
+      unusualActivity?: boolean;
+      geopoliticalEvents?: boolean;
+      travelRisks?: boolean;
     };
   };
-  departments: {
-    list: {
+  integrations?: {
+    googleMaps?: {
+      enabled?: boolean;
+      apiKey?: string;
+    };
+    externalSystems?: {
+      enabled?: boolean;
+      endpoints?: string[];
+    };
+  };
+  departments?: {
+    list?: {
       id: string;
       name: string;
       description: string;
@@ -124,333 +107,104 @@ interface OrganizationConfig {
       securityLevel: string;
     }[];
   };
-  ai: {
-    enabled: boolean;
-    model: string;
-    tokensUsed: number;
-    tokenLimit: number;
-    settings: {
-      temperature: number;
-      contextWindow: number;
-      responseLength: string;
+  ai?: {
+    enabled?: boolean;
+    model?: string;
+    tokenLimit?: number;
+    settings?: {
+      temperature?: number;
+      contextWindow?: number;
+      responseLength?: string;
     };
-    notifications: {
-      approachingLimit: boolean;
-      limitThreshold: number;
-      weeklyUsageReport: boolean;
+    notifications?: {
+      approachingLimit?: boolean;
+      limitThreshold?: number;
+      weeklyUsageReport?: boolean;
     };
   };
 }
 
 const OrganizationSettings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('general');
-  const [showPasswords, setShowPasswords] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<OrganizationSettings>({});
   const [loading, setLoading] = useState(true);
-  const [showAddDepartment, setShowAddDepartment] = useState(false);
-  const [newDepartment, setNewDepartment] = useState({
-    id: '',
-    name: '',
-    description: '',
-    headCount: 0,
-    securityLevel: 'standard'
-  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'general' | 'security' | 'notifications' | 'integrations' | 'departments' | 'ai'>('general');
 
   const { organization, hasPermission } = useAuth();
 
-  const [config, setConfig] = useState<OrganizationConfig>({
-    general: {
-      name: 'SecureIntel Corporation',
-      description: 'Global security intelligence and risk management platform',
-      website: 'https://secureintel.com',
-      industry: 'Security & Intelligence',
-      size: '500-1000',
-      headquarters: {
-        address: '123 Security Plaza',
-        city: 'Washington',
-        country: 'United States',
-        timezone: 'America/New_York'
-      },
-      contact: {
-        email: 'contact@secureintel.com',
-        phone: '+1-202-555-0123',
-        emergencyPhone: '+1-202-555-0911'
-      }
-    },
-    security: {
-      passwordPolicy: {
-        minLength: 12,
-        requireUppercase: true,
-        requireLowercase: true,
-        requireNumbers: true,
-        requireSpecialChars: true,
-        maxAge: 90,
-        preventReuse: 5
-      },
-      sessionPolicy: {
-        maxDuration: 480, // 8 hours
-        idleTimeout: 30,
-        maxConcurrentSessions: 3,
-        requireReauth: true
-      },
-      twoFactorAuth: {
-        required: true,
-        allowedMethods: ['totp', 'sms', 'email'],
-        backupCodes: true
-      },
-      accessControl: {
-        defaultRole: 'user',
-        autoLockAccount: true,
-        maxFailedAttempts: 5,
-        lockoutDuration: 30
-      }
-    },
-    notifications: {
-      email: {
-        enabled: true,
-        smtp: {
-          host: 'smtp.secureintel.com',
-          port: 587,
-          secure: true,
-          username: 'noreply@secureintel.com',
-          password: '••••••••••••'
-        }
-      },
-      alerts: {
-        securityIncidents: true,
-        systemMaintenance: true,
-        userActivity: false,
-        riskAssessments: true
-      },
-      thresholds: {
-        highRiskScore: 70,
-        criticalRiskScore: 85,
-        unusualActivity: true,
-        geopoliticalEvents: true,
-        travelRisks: true
-      }
-    },
-    integrations: {
-      googleMaps: {
-        enabled: true,
-        apiKey: 'AIzaSyB_wJ5jSA50__7XC2JpbAFEWZJJzdWWj1M'
-      },
-      externalSystems: {
-        enabled: false,
-        endpoints: []
-      }
-    },
-    departments: {
-      list: [
-        {
-          id: 'sec-ops',
-          name: 'Security Operations',
-          description: 'Manages day-to-day security operations and incident response',
-          headCount: 45,
-          securityLevel: 'high'
-        },
-        {
-          id: 'field-ops',
-          name: 'Field Operations',
-          description: 'Handles on-site security assessments and deployments',
-          headCount: 78,
-          securityLevel: 'high'
-        },
-        {
-          id: 'risk-analysis',
-          name: 'Risk Analysis',
-          description: 'Conducts threat assessments and risk modeling',
-          headCount: 32,
-          securityLevel: 'medium'
-        },
-        {
-          id: 'it-security',
-          name: 'IT Security',
-          description: 'Manages cybersecurity and digital infrastructure protection',
-          headCount: 56,
-          securityLevel: 'high'
-        },
-        {
-          id: 'hr',
-          name: 'Human Resources',
-          description: 'Manages personnel and organizational development',
-          headCount: 18,
-          securityLevel: 'medium'
-        }
-      ]
-    },
-    ai: {
-      enabled: true,
-      model: 'OdynSentinel-Pro',
-      tokensUsed: 1458732,
-      tokenLimit: 5000000,
-      settings: {
-        temperature: 0.7,
-        contextWindow: 16000,
-        responseLength: 'balanced'
-      },
-      notifications: {
-        approachingLimit: true,
-        limitThreshold: 80,
-        weeklyUsageReport: true
-      }
-    }
-  });
-
   useEffect(() => {
-    if (organization) {
-      loadOrganizationSettings();
-    } else {
-      setLoading(false);
+    if (organization?.id) {
+      fetchSettings();
     }
   }, [organization]);
 
-  const loadOrganizationSettings = async () => {
-    if (!organization) return;
-    
+  const fetchSettings = async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      // If settings exist in the organization record, use them
-      if (organization.settings && Object.keys(organization.settings).length > 0) {
-        // Merge default settings with stored settings to ensure all fields exist
-        setConfig(prevConfig => ({
-          ...prevConfig,
-          ...organization.settings,
-          general: {
-            ...prevConfig.general,
-            name: organization.name,
-            ...(organization.settings.general || {})
-          }
-        }));
-      } else {
-        // Just update the organization name
-        setConfig(prevConfig => ({
-          ...prevConfig,
-          general: {
-            ...prevConfig.general,
-            name: organization.name
-          }
-        }));
-      }
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', organization?.id)
+        .single();
+
+      if (error) throw error;
+      
+      setSettings(data?.settings || {});
     } catch (err) {
-      console.error('Error loading organization settings:', err);
+      console.error('Error fetching organization settings:', err);
       setError('Failed to load organization settings');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = async () => {
-    if (!organization) {
-      setError('No organization found');
-      return;
-    }
-    
-    setSaving(true);
-    setError(null);
+  const saveSettings = async () => {
+    if (!organization?.id) return;
     
     try {
-      // Update organization name and settings
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+      
       const { error } = await supabase
         .from('organizations')
-        .update({
-          name: config.general.name,
-          settings: {
-            general: { ...config.general, name: undefined }, // Don't duplicate name in settings
-            security: config.security,
-            notifications: config.notifications,
-            integrations: config.integrations,
-            departments: config.departments,
-            ai: config.ai
-          }
-        })
+        .update({ settings })
         .eq('id', organization.id);
 
-      if (error) {
-        throw error;
-      }
-
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      if (error) throw error;
+      
+      setSuccess('Settings saved successfully');
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       console.error('Error saving organization settings:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save settings');
+      setError('Failed to save settings');
     } finally {
       setSaving(false);
     }
   };
 
-  const updateConfig = (section: keyof OrganizationConfig, field: string, value: any) => {
-    setConfig(prev => ({
-      ...prev,
-      [section]: {
-        ...prev[section],
-        [field]: value
+  const updateSettings = (path: string, value: any) => {
+    const pathParts = path.split('.');
+    const newSettings = { ...settings };
+    
+    let current = newSettings;
+    for (let i = 0; i < pathParts.length - 1; i++) {
+      const part = pathParts[i];
+      if (!current[part]) {
+        current[part] = {};
       }
-    }));
+      current = current[part];
+    }
+    
+    current[pathParts[pathParts.length - 1]] = value;
+    setSettings(newSettings);
   };
-
-  const updateNestedConfig = (section: keyof OrganizationConfig, subsection: string, field: string, value: any) => {
-    setConfig(prev => ({
-      ...prev,
-      [section]: {
-        ...prev[section],
-        [subsection]: {
-          ...prev[section][subsection],
-          [field]: value
-        }
-      }
-    }));
-  };
-
-  const handleAddDepartment = () => {
-    if (!newDepartment.name) return;
-    
-    const departmentId = newDepartment.id || newDepartment.name.toLowerCase().replace(/\s+/g, '-');
-    
-    const newDepartmentWithId = {
-      ...newDepartment,
-      id: departmentId
-    };
-    
-    setConfig(prev => ({
-      ...prev,
-      departments: {
-        list: [...prev.departments.list, newDepartmentWithId]
-      }
-    }));
-    
-    setNewDepartment({
-      id: '',
-      name: '',
-      description: '',
-      headCount: 0,
-      securityLevel: 'standard'
-    });
-    
-    setShowAddDepartment(false);
-  };
-
-  const handleRemoveDepartment = (id: string) => {
-    setConfig(prev => ({
-      ...prev,
-      departments: {
-        list: prev.departments.list.filter(dept => dept.id !== id)
-      }
-    }));
-  };
-
-  const tabs = [
-    { id: 'general', label: 'General', icon: Building },
-    { id: 'security', label: 'Security', icon: Shield },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'departments', label: 'Departments', icon: Users },
-    { id: 'integrations', label: 'Integrations', icon: Wifi },
-    { id: 'ai', label: 'AI Settings', icon: Brain }
-  ];
 
   if (!hasPermission('organizations.read')) {
     return (
@@ -462,7 +216,7 @@ const OrganizationSettings: React.FC = () => {
     );
   }
 
-  if (loading) {
+  if (loading && Object.keys(settings).length === 0) {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
@@ -473,1168 +227,1319 @@ const OrganizationSettings: React.FC = () => {
     );
   }
 
-  // Calculate token usage percentage
-  const tokenUsagePercentage = Math.min(100, Math.round((config.ai.tokensUsed / config.ai.tokenLimit) * 100));
-  const tokenUsageColor = tokenUsagePercentage > 90 ? 'bg-red-500' : 
-                          tokenUsagePercentage > 70 ? 'bg-yellow-500' : 
-                          'bg-green-500';
+  // If the active tab is 'ai', render the AIUsageMonitoring component
+  if (activeTab === 'ai') {
+    return <AIUsageMonitoring />;
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Organization Settings</h1>
-          <p className="text-gray-600">Configure your organization's security and operational settings</p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Organization Settings</h1>
+          <p className="text-gray-600">Configure your organization's settings and preferences</p>
         </div>
+        <button
+          onClick={saveSettings}
+          disabled={saving || !hasPermission('organizations.update')}
+          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+        >
+          {saving ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Saving...</span>
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" />
+              <span>Save Changes</span>
+            </>
+          )}
+        </button>
+      </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2">
-            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-            <span className="text-red-700 text-sm">{error}</span>
-          </div>
-        )}
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+          <span className="text-red-700 text-sm">{error}</span>
+          <button 
+            onClick={() => setError(null)}
+            className="ml-auto text-red-500 hover:text-red-700"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          {/* Tab Navigation */}
-          <div className="border-b border-gray-200">
-            <nav className="flex space-x-8 px-6">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                      activeTab === tab.id
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
+      {success && (
+        <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center space-x-2">
+          <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+          <span className="text-green-700 text-sm">{success}</span>
+          <button 
+            onClick={() => setSuccess(null)}
+            className="ml-auto text-green-500 hover:text-green-700"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
-          {/* Tab Content */}
-          <div className="p-6">
-            {/* General Settings */}
-            {activeTab === 'general' && (
-              <div className="space-y-8">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-6">Organization Information</h2>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Organization Name
-                      </label>
-                      <input
-                        type="text"
-                        value={config.general.name}
-                        onChange={(e) => updateNestedConfig('general', 'name', '', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Website
-                      </label>
-                      <input
-                        type="url"
-                        value={config.general.website}
-                        onChange={(e) => updateNestedConfig('general', 'website', '', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Description
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={config.general.description}
-                        onChange={(e) => updateNestedConfig('general', 'description', '', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Industry
-                      </label>
-                      <select
-                        value={config.general.industry}
-                        onChange={(e) => updateNestedConfig('general', 'industry', '', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="Security & Intelligence">Security & Intelligence</option>
-                        <option value="Government">Government</option>
-                        <option value="Defense">Defense</option>
-                        <option value="Corporate Security">Corporate Security</option>
-                        <option value="Consulting">Consulting</option>
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Organization Size
-                      </label>
-                      <select
-                        value={config.general.size}
-                        onChange={(e) => updateNestedConfig('general', 'size', '', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="1-50">1-50 employees</option>
-                        <option value="51-200">51-200 employees</option>
-                        <option value="201-500">201-500 employees</option>
-                        <option value="500-1000">500-1000 employees</option>
-                        <option value="1000+">1000+ employees</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Headquarters</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Address
-                      </label>
-                      <input
-                        type="text"
-                        value={config.general.headquarters.address}
-                        onChange={(e) => updateNestedConfig('general', 'headquarters', 'address', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        City
-                      </label>
-                      <input
-                        type="text"
-                        value={config.general.headquarters.city}
-                        onChange={(e) => updateNestedConfig('general', 'headquarters', 'city', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Country
-                      </label>
-                      <input
-                        type="text"
-                        value={config.general.headquarters.country}
-                        onChange={(e) => updateNestedConfig('general', 'headquarters', 'country', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Primary Email
-                      </label>
-                      <input
-                        type="email"
-                        value={config.general.contact.email}
-                        onChange={(e) => updateNestedConfig('general', 'contact', 'email', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Primary Phone
-                      </label>
-                      <input
-                        type="tel"
-                        value={config.general.contact.phone}
-                        onChange={(e) => updateNestedConfig('general', 'contact', 'phone', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Emergency Phone
-                      </label>
-                      <input
-                        type="tel"
-                        value={config.general.contact.emergencyPhone}
-                        onChange={(e) => updateNestedConfig('general', 'contact', 'emergencyPhone', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                </div>
+      {/* Settings Tabs */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="border-b border-gray-200">
+          <nav className="flex space-x-8 px-6">
+            <button
+              onClick={() => setActiveTab('general')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'general'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <Building className="w-5 h-5" />
+                <span>General</span>
               </div>
-            )}
-
-            {/* Security Settings */}
-            {activeTab === 'security' && (
-              <div className="space-y-8">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-6">Security Policies</h2>
-                  
-                  <div className="space-y-6">
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Password Policy</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Minimum Length
-                          </label>
-                          <input
-                            type="number"
-                            min="8"
-                            max="32"
-                            value={config.security.passwordPolicy.minLength}
-                            onChange={(e) => updateNestedConfig('security', 'passwordPolicy', 'minLength', parseInt(e.target.value))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Password Age (days)
-                          </label>
-                          <input
-                            type="number"
-                            min="30"
-                            max="365"
-                            value={config.security.passwordPolicy.maxAge}
-                            onChange={(e) => updateNestedConfig('security', 'passwordPolicy', 'maxAge', parseInt(e.target.value))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-                        
-                        <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-3">
-                            Requirements
-                          </label>
-                          <div className="space-y-2">
-                            <label className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={config.security.passwordPolicy.requireUppercase}
-                                onChange={(e) => updateNestedConfig('security', 'passwordPolicy', 'requireUppercase', e.target.checked)}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span className="ml-2 text-sm text-gray-700">Require uppercase letters</span>
-                            </label>
-                            <label className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={config.security.passwordPolicy.requireLowercase}
-                                onChange={(e) => updateNestedConfig('security', 'passwordPolicy', 'requireLowercase', e.target.checked)}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span className="ml-2 text-sm text-gray-700">Require lowercase letters</span>
-                            </label>
-                            <label className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={config.security.passwordPolicy.requireNumbers}
-                                onChange={(e) => updateNestedConfig('security', 'passwordPolicy', 'requireNumbers', e.target.checked)}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span className="ml-2 text-sm text-gray-700">Require numbers</span>
-                            </label>
-                            <label className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={config.security.passwordPolicy.requireSpecialChars}
-                                onChange={(e) => updateNestedConfig('security', 'passwordPolicy', 'requireSpecialChars', e.target.checked)}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span className="ml-2 text-sm text-gray-700">Require special characters</span>
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Two-Factor Authentication</h3>
-                      <div className="space-y-4">
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={config.security.twoFactorAuth.required}
-                            onChange={(e) => updateNestedConfig('security', 'twoFactorAuth', 'required', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="ml-2 text-sm font-medium text-gray-700">Require 2FA for all users</span>
-                        </label>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Allowed Methods
-                          </label>
-                          <div className="space-y-2">
-                            {['totp', 'sms', 'email'].map((method) => (
-                              <label key={method} className="flex items-center">
-                                <input
-                                  type="checkbox"
-                                  checked={config.security.twoFactorAuth.allowedMethods.includes(method)}
-                                  onChange={(e) => {
-                                    const methods = e.target.checked
-                                      ? [...config.security.twoFactorAuth.allowedMethods, method]
-                                      : config.security.twoFactorAuth.allowedMethods.filter(m => m !== method);
-                                    updateNestedConfig('security', 'twoFactorAuth', 'allowedMethods', methods);
-                                  }}
-                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <span className="ml-2 text-sm text-gray-700 capitalize">
-                                  {method === 'totp' ? 'Authenticator App (TOTP)' : method.toUpperCase()}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Account Lockout</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Max Failed Attempts
-                          </label>
-                          <input
-                            type="number"
-                            min="3"
-                            max="10"
-                            value={config.security.accessControl.maxFailedAttempts}
-                            onChange={(e) => updateNestedConfig('security', 'accessControl', 'maxFailedAttempts', parseInt(e.target.value))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Lockout Duration (minutes)
-                          </label>
-                          <input
-                            type="number"
-                            min="5"
-                            max="1440"
-                            value={config.security.accessControl.lockoutDuration}
-                            onChange={(e) => updateNestedConfig('security', 'accessControl', 'lockoutDuration', parseInt(e.target.value))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            </button>
+            
+            <button
+              onClick={() => setActiveTab('security')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'security'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <Shield className="w-5 h-5" />
+                <span>Security</span>
               </div>
-            )}
-
-            {/* Notifications Settings */}
-            {activeTab === 'notifications' && (
-              <div className="space-y-8">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-6">Notification Settings</h2>
-                  
-                  <div className="space-y-6">
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Email Configuration</h3>
-                      <div className="space-y-4">
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={config.notifications.email.enabled}
-                            onChange={(e) => updateNestedConfig('notifications', 'email', 'enabled', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="ml-2 text-sm font-medium text-gray-700">Enable email notifications</span>
-                        </label>
-                        
-                        {config.notifications.email.enabled && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                SMTP Host
-                              </label>
-                              <input
-                                type="text"
-                                value={config.notifications.email.smtp.host}
-                                onChange={(e) => updateNestedConfig('notifications', 'email', 'smtp', { ...config.notifications.email.smtp, host: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              />
-                            </div>
-                            
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                SMTP Port
-                              </label>
-                              <input
-                                type="number"
-                                value={config.notifications.email.smtp.port}
-                                onChange={(e) => updateNestedConfig('notifications', 'email', 'smtp', { ...config.notifications.email.smtp, port: parseInt(e.target.value) })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              />
-                            </div>
-                            
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Username
-                              </label>
-                              <input
-                                type="text"
-                                value={config.notifications.email.smtp.username}
-                                onChange={(e) => updateNestedConfig('notifications', 'email', 'smtp', { ...config.notifications.email.smtp, username: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              />
-                            </div>
-                            
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Password
-                              </label>
-                              <div className="relative">
-                                <input
-                                  type={showPasswords ? 'text' : 'password'}
-                                  value={config.notifications.email.smtp.password}
-                                  onChange={(e) => updateNestedConfig('notifications', 'email', 'smtp', { ...config.notifications.email.smtp, password: e.target.value })}
-                                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => setShowPasswords(!showPasswords)}
-                                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                                >
-                                  {showPasswords ? <EyeOff className="w-4 h-4 text-gray-400" /> : <Eye className="w-4 h-4 text-gray-400" />}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Alert Preferences</h3>
-                      <div className="space-y-3">
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={config.notifications.alerts.securityIncidents}
-                            onChange={(e) => updateNestedConfig('notifications', 'alerts', 'securityIncidents', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="ml-2 text-sm text-gray-700">Security incidents</span>
-                        </label>
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={config.notifications.alerts.systemMaintenance}
-                            onChange={(e) => updateNestedConfig('notifications', 'alerts', 'systemMaintenance', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="ml-2 text-sm text-gray-700">System maintenance</span>
-                        </label>
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={config.notifications.alerts.userActivity}
-                            onChange={(e) => updateNestedConfig('notifications', 'alerts', 'userActivity', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="ml-2 text-sm text-gray-700">User activity</span>
-                        </label>
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={config.notifications.alerts.riskAssessments}
-                            onChange={(e) => updateNestedConfig('notifications', 'alerts', 'riskAssessments', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="ml-2 text-sm text-gray-700">Risk assessments</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Alert Thresholds</h3>
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              High Risk Score Threshold (0-100)
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={config.notifications.thresholds.highRiskScore}
-                              onChange={(e) => updateNestedConfig('notifications', 'thresholds', 'highRiskScore', parseInt(e.target.value))}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                            <p className="mt-1 text-xs text-gray-500">
-                              Alerts will be triggered when risk scores exceed this value
-                            </p>
-                          </div>
-                          
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Critical Risk Score Threshold (0-100)
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={config.notifications.thresholds.criticalRiskScore}
-                              onChange={(e) => updateNestedConfig('notifications', 'thresholds', 'criticalRiskScore', parseInt(e.target.value))}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                            <p className="mt-1 text-xs text-gray-500">
-                              Emergency alerts will be triggered when risk scores exceed this value
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-3">
-                          <label className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={config.notifications.thresholds.unusualActivity}
-                              onChange={(e) => updateNestedConfig('notifications', 'thresholds', 'unusualActivity', e.target.checked)}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="ml-2 text-sm text-gray-700">Alert on unusual activity patterns</span>
-                          </label>
-                          <label className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={config.notifications.thresholds.geopoliticalEvents}
-                              onChange={(e) => updateNestedConfig('notifications', 'thresholds', 'geopoliticalEvents', e.target.checked)}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="ml-2 text-sm text-gray-700">Alert on relevant geopolitical events</span>
-                          </label>
-                          <label className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={config.notifications.thresholds.travelRisks}
-                              onChange={(e) => updateNestedConfig('notifications', 'thresholds', 'travelRisks', e.target.checked)}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="ml-2 text-sm text-gray-700">Alert on travel risk changes</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            </button>
+            
+            <button
+              onClick={() => setActiveTab('notifications')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'notifications'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <Bell className="w-5 h-5" />
+                <span>Notifications</span>
               </div>
-            )}
-
-            {/* Departments Settings */}
-            {activeTab === 'departments' && (
-              <div className="space-y-8">
-                <div>
-                  <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-semibold text-gray-900">Departments</h2>
-                    <button
-                      onClick={() => setShowAddDepartment(true)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            </button>
+            
+            <button
+              onClick={() => setActiveTab('integrations')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'integrations'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <Globe className="w-5 h-5" />
+                <span>Integrations</span>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => setActiveTab('departments')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'departments'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <Settings className="w-5 h-5" />
+                <span>Departments</span>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => setActiveTab('ai')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'ai'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <Brain className="w-5 h-5" />
+                <span>AI & Usage</span>
+              </div>
+            </button>
+          </nav>
+        </div>
+        
+        <div className="p-6">
+          {/* General Settings */}
+          {activeTab === 'general' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Organization Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Organization Name
+                    </label>
+                    <input
+                      type="text"
+                      value={organization?.name || ''}
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Contact support to change your organization name
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Plan Type
+                    </label>
+                    <input
+                      type="text"
+                      value={(organization?.plan_type || '').charAt(0).toUpperCase() + (organization?.plan_type || '').slice(1)}
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Contact sales to upgrade your plan
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Description
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={settings.general?.description || ''}
+                      onChange={(e) => updateSettings('general.description', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Brief description of your organization"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Website
+                    </label>
+                    <input
+                      type="url"
+                      value={settings.general?.website || ''}
+                      onChange={(e) => updateSettings('general.website', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="https://example.com"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Industry
+                    </label>
+                    <select
+                      value={settings.general?.industry || ''}
+                      onChange={(e) => updateSettings('general.industry', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
-                      Add Department
-                    </button>
+                      <option value="">Select Industry</option>
+                      <option value="government">Government</option>
+                      <option value="defense">Defense & Security</option>
+                      <option value="finance">Financial Services</option>
+                      <option value="healthcare">Healthcare</option>
+                      <option value="technology">Technology</option>
+                      <option value="energy">Energy & Utilities</option>
+                      <option value="manufacturing">Manufacturing</option>
+                      <option value="transportation">Transportation & Logistics</option>
+                      <option value="retail">Retail & Consumer Goods</option>
+                      <option value="education">Education</option>
+                      <option value="nonprofit">Non-profit & NGO</option>
+                      <option value="other">Other</option>
+                    </select>
                   </div>
                   
-                  {config.departments.list.length === 0 ? (
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-                      <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No Departments Configured</h3>
-                      <p className="text-gray-600 mb-4">Add departments to organize your personnel and manage access controls</p>
-                      <button
-                        onClick={() => setShowAddDepartment(true)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Organization Size
+                    </label>
+                    <select
+                      value={settings.general?.size || ''}
+                      onChange={(e) => updateSettings('general.size', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Select Size</option>
+                      <option value="1-10">1-10 employees</option>
+                      <option value="11-50">11-50 employees</option>
+                      <option value="51-200">51-200 employees</option>
+                      <option value="201-500">201-500 employees</option>
+                      <option value="501-1000">501-1000 employees</option>
+                      <option value="1001-5000">1001-5000 employees</option>
+                      <option value="5001+">5001+ employees</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Headquarters</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Address
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.general?.headquarters?.address || ''}
+                      onChange={(e) => updateSettings('general.headquarters.address', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Street address"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      City
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.general?.headquarters?.city || ''}
+                      onChange={(e) => updateSettings('general.headquarters.city', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="City"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Country
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.general?.headquarters?.country || ''}
+                      onChange={(e) => updateSettings('general.headquarters.country', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Country"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Timezone
+                    </label>
+                    <select
+                      value={settings.general?.headquarters?.timezone || ''}
+                      onChange={(e) => updateSettings('general.headquarters.timezone', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Select Timezone</option>
+                      <option value="UTC-12:00">UTC-12:00</option>
+                      <option value="UTC-11:00">UTC-11:00</option>
+                      <option value="UTC-10:00">UTC-10:00</option>
+                      <option value="UTC-09:00">UTC-09:00</option>
+                      <option value="UTC-08:00">UTC-08:00 (PST)</option>
+                      <option value="UTC-07:00">UTC-07:00 (MST)</option>
+                      <option value="UTC-06:00">UTC-06:00 (CST)</option>
+                      <option value="UTC-05:00">UTC-05:00 (EST)</option>
+                      <option value="UTC-04:00">UTC-04:00</option>
+                      <option value="UTC-03:00">UTC-03:00</option>
+                      <option value="UTC-02:00">UTC-02:00</option>
+                      <option value="UTC-01:00">UTC-01:00</option>
+                      <option value="UTC+00:00">UTC+00:00</option>
+                      <option value="UTC+01:00">UTC+01:00 (CET)</option>
+                      <option value="UTC+02:00">UTC+02:00</option>
+                      <option value="UTC+03:00">UTC+03:00</option>
+                      <option value="UTC+04:00">UTC+04:00</option>
+                      <option value="UTC+05:00">UTC+05:00</option>
+                      <option value="UTC+05:30">UTC+05:30 (IST)</option>
+                      <option value="UTC+06:00">UTC+06:00</option>
+                      <option value="UTC+07:00">UTC+07:00</option>
+                      <option value="UTC+08:00">UTC+08:00 (CST)</option>
+                      <option value="UTC+09:00">UTC+09:00 (JST)</option>
+                      <option value="UTC+10:00">UTC+10:00</option>
+                      <option value="UTC+11:00">UTC+11:00</option>
+                      <option value="UTC+12:00">UTC+12:00</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Primary Email
+                    </label>
+                    <input
+                      type="email"
+                      value={settings.general?.contact?.email || ''}
+                      onChange={(e) => updateSettings('general.contact.email', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="contact@example.com"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      value={settings.general?.contact?.phone || ''}
+                      onChange={(e) => updateSettings('general.contact.phone', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="+1 (555) 123-4567"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Emergency Contact Number
+                    </label>
+                    <input
+                      type="tel"
+                      value={settings.general?.contact?.emergencyPhone || ''}
+                      onChange={(e) => updateSettings('general.contact.emergencyPhone', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="+1 (555) 987-6543"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Security Settings */}
+          {activeTab === 'security' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Password Policy</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Minimum Password Length
+                    </label>
+                    <input
+                      type="number"
+                      min="8"
+                      max="32"
+                      value={settings.security?.passwordPolicy?.minLength || 8}
+                      onChange={(e) => updateSettings('security.passwordPolicy.minLength', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Password Expiry (days)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="365"
+                      value={settings.security?.passwordPolicy?.maxAge || 90}
+                      onChange={(e) => updateSettings('security.passwordPolicy.maxAge', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Set to 0 for no expiration
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Require Uppercase Letters
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.security?.passwordPolicy?.requireUppercase || false}
+                        onChange={(e) => updateSettings('security.passwordPolicy.requireUppercase', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.security?.passwordPolicy?.requireUppercase ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
                       >
-                        Add First Department
-                      </button>
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.security?.passwordPolicy?.requireUppercase ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {config.departments.list.map((dept) => (
-                        <div key={dept.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <h3 className="text-lg font-medium text-gray-900">{dept.name}</h3>
-                              <p className="text-sm text-gray-600 mt-1">{dept.description}</p>
-                              <div className="flex items-center space-x-4 mt-2">
-                                <div className="flex items-center space-x-1">
-                                  <Users className="w-4 h-4 text-gray-400" />
-                                  <span className="text-sm text-gray-600">{dept.headCount} personnel</span>
-                                </div>
-                                <div className="flex items-center space-x-1">
-                                  <Shield className="w-4 h-4 text-gray-400" />
-                                  <span className="text-sm text-gray-600 capitalize">{dept.securityLevel} security</span>
-                                </div>
-                              </div>
-                            </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Require Lowercase Letters
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.security?.passwordPolicy?.requireLowercase || false}
+                        onChange={(e) => updateSettings('security.passwordPolicy.requireLowercase', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.security?.passwordPolicy?.requireLowercase ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.security?.passwordPolicy?.requireLowercase ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Require Numbers
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.security?.passwordPolicy?.requireNumbers || false}
+                        onChange={(e) => updateSettings('security.passwordPolicy.requireNumbers', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.security?.passwordPolicy?.requireNumbers ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.security?.passwordPolicy?.requireNumbers ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Require Special Characters
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.security?.passwordPolicy?.requireSpecialChars || false}
+                        onChange={(e) => updateSettings('security.passwordPolicy.requireSpecialChars', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.security?.passwordPolicy?.requireSpecialChars ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.security?.passwordPolicy?.requireSpecialChars ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Two-Factor Authentication</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Require Two-Factor Authentication
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.security?.twoFactorAuth?.required || false}
+                        onChange={(e) => updateSettings('security.twoFactorAuth.required', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.security?.twoFactorAuth?.required ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.security?.twoFactorAuth?.required ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Allow Backup Codes
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.security?.twoFactorAuth?.backupCodes || false}
+                        onChange={(e) => updateSettings('security.twoFactorAuth.backupCodes', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.security?.twoFactorAuth?.backupCodes ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.security?.twoFactorAuth?.backupCodes ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Account Security</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Auto-lock Account After Failed Attempts
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.security?.accessControl?.autoLockAccount || false}
+                        onChange={(e) => updateSettings('security.accessControl.autoLockAccount', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.security?.accessControl?.autoLockAccount ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.security?.accessControl?.autoLockAccount ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Max Failed Login Attempts
+                    </label>
+                    <input
+                      type="number"
+                      min="3"
+                      max="10"
+                      value={settings.security?.accessControl?.maxFailedAttempts || 5}
+                      onChange={(e) => updateSettings('security.accessControl.maxFailedAttempts', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Account Lockout Duration (minutes)
+                    </label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="1440"
+                      value={settings.security?.accessControl?.lockoutDuration || 30}
+                      onChange={(e) => updateSettings('security.accessControl.lockoutDuration', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Default User Role
+                    </label>
+                    <select
+                      value={settings.security?.accessControl?.defaultRole || 'user'}
+                      onChange={(e) => updateSettings('security.accessControl.defaultRole', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="user">User</option>
+                      <option value="manager">Manager</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Session Settings</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Session Timeout (minutes)
+                    </label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="1440"
+                      value={settings.security?.sessionPolicy?.idleTimeout || 30}
+                      onChange={(e) => updateSettings('security.sessionPolicy.idleTimeout', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Time of inactivity before a user is logged out
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Maximum Session Duration (hours)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="168"
+                      value={settings.security?.sessionPolicy?.maxDuration || 24}
+                      onChange={(e) => updateSettings('security.sessionPolicy.maxDuration', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Maximum time a session can remain active
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Require Re-authentication for Sensitive Actions
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.security?.sessionPolicy?.requireReauth || false}
+                        onChange={(e) => updateSettings('security.sessionPolicy.requireReauth', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.security?.sessionPolicy?.requireReauth ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.security?.sessionPolicy?.requireReauth ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Notifications Settings */}
+          {activeTab === 'notifications' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Email Notifications</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Enable Email Notifications
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.notifications?.email?.enabled || false}
+                        onChange={(e) => updateSettings('notifications.email.enabled', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.notifications?.email?.enabled ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.notifications?.email?.enabled ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {settings.notifications?.email?.enabled && (
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">SMTP Configuration</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            SMTP Host
+                          </label>
+                          <input
+                            type="text"
+                            value={settings.notifications?.email?.smtp?.host || ''}
+                            onChange={(e) => updateSettings('notifications.email.smtp.host', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="smtp.example.com"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            SMTP Port
+                          </label>
+                          <input
+                            type="number"
+                            value={settings.notifications?.email?.smtp?.port || 587}
+                            onChange={(e) => updateSettings('notifications.email.smtp.port', parseInt(e.target.value))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            SMTP Username
+                          </label>
+                          <input
+                            type="text"
+                            value={settings.notifications?.email?.smtp?.username || ''}
+                            onChange={(e) => updateSettings('notifications.email.smtp.username', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="username"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            SMTP Password
+                          </label>
+                          <input
+                            type="password"
+                            value={settings.notifications?.email?.smtp?.password || ''}
+                            onChange={(e) => updateSettings('notifications.email.smtp.password', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="••••••••"
+                          />
+                        </div>
+                        
+                        <div className="flex items-center justify-between md:col-span-2">
+                          <label className="text-sm font-medium text-gray-700">
+                            Use Secure Connection (TLS/SSL)
+                          </label>
+                          <div className="relative inline-block w-12 h-6">
+                            <input
+                              type="checkbox"
+                              className="opacity-0 w-0 h-0"
+                              checked={settings.notifications?.email?.smtp?.secure || false}
+                              onChange={(e) => updateSettings('notifications.email.smtp.secure', e.target.checked)}
+                            />
+                            <span 
+                              className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                                settings.notifications?.email?.smtp?.secure ? 'bg-blue-600' : 'bg-gray-300'
+                              }`}
+                            >
+                              <span 
+                                className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                                  settings.notifications?.email?.smtp?.secure ? 'transform translate-x-6' : ''
+                                }`}
+                              ></span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Alert Settings</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Security Incidents
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.notifications?.alerts?.securityIncidents || false}
+                        onChange={(e) => updateSettings('notifications.alerts.securityIncidents', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.notifications?.alerts?.securityIncidents ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.notifications?.alerts?.securityIncidents ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      System Maintenance
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.notifications?.alerts?.systemMaintenance || false}
+                        onChange={(e) => updateSettings('notifications.alerts.systemMaintenance', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.notifications?.alerts?.systemMaintenance ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.notifications?.alerts?.systemMaintenance ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      User Activity
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.notifications?.alerts?.userActivity || false}
+                        onChange={(e) => updateSettings('notifications.alerts.userActivity', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.notifications?.alerts?.userActivity ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.notifications?.alerts?.userActivity ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Risk Assessments
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.notifications?.alerts?.riskAssessments || false}
+                        onChange={(e) => updateSettings('notifications.alerts.riskAssessments', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.notifications?.alerts?.riskAssessments ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.notifications?.alerts?.riskAssessments ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Alert Thresholds</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      High Risk Score Threshold
+                    </label>
+                    <input
+                      type="number"
+                      min="50"
+                      max="90"
+                      value={settings.notifications?.thresholds?.highRiskScore || 70}
+                      onChange={(e) => updateSettings('notifications.thresholds.highRiskScore', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Alert when risk score exceeds this value
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Critical Risk Score Threshold
+                    </label>
+                    <input
+                      type="number"
+                      min="70"
+                      max="100"
+                      value={settings.notifications?.thresholds?.criticalRiskScore || 90}
+                      onChange={(e) => updateSettings('notifications.thresholds.criticalRiskScore', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Escalate alerts when risk score exceeds this value
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Unusual Activity Detection
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.notifications?.thresholds?.unusualActivity || false}
+                        onChange={(e) => updateSettings('notifications.thresholds.unusualActivity', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.notifications?.thresholds?.unusualActivity ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.notifications?.thresholds?.unusualActivity ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Geopolitical Event Alerts
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.notifications?.thresholds?.geopoliticalEvents || false}
+                        onChange={(e) => updateSettings('notifications.thresholds.geopoliticalEvents', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.notifications?.thresholds?.geopoliticalEvents ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.notifications?.thresholds?.geopoliticalEvents ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Travel Risk Alerts
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.notifications?.thresholds?.travelRisks || false}
+                        onChange={(e) => updateSettings('notifications.thresholds.travelRisks', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.notifications?.thresholds?.travelRisks ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.notifications?.thresholds?.travelRisks ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Integrations Settings */}
+          {activeTab === 'integrations' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Google Maps Integration</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Enable Google Maps
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.integrations?.googleMaps?.enabled || false}
+                        onChange={(e) => updateSettings('integrations.googleMaps.enabled', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.integrations?.googleMaps?.enabled ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.integrations?.googleMaps?.enabled ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {settings.integrations?.googleMaps?.enabled && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Google Maps API Key
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.integrations?.googleMaps?.apiKey || ''}
+                        onChange={(e) => updateSettings('integrations.googleMaps.apiKey', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter your Google Maps API key"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Required for map functionality. Get an API key from the <a href="https://console.cloud.google.com/google/maps-apis" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">Google Cloud Console</a>.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">External Systems Integration</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Enable External Systems Integration
+                    </label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.integrations?.externalSystems?.enabled || false}
+                        onChange={(e) => updateSettings('integrations.externalSystems.enabled', e.target.checked)}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.integrations?.externalSystems?.enabled ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.integrations?.externalSystems?.enabled ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {settings.integrations?.externalSystems?.enabled && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        External API Endpoints
+                      </label>
+                      <div className="space-y-2">
+                        {(settings.integrations?.externalSystems?.endpoints || []).map((endpoint, index) => (
+                          <div key={index} className="flex items-center space-x-2">
+                            <input
+                              type="text"
+                              value={endpoint}
+                              onChange={(e) => {
+                                const newEndpoints = [...(settings.integrations?.externalSystems?.endpoints || [])];
+                                newEndpoints[index] = e.target.value;
+                                updateSettings('integrations.externalSystems.endpoints', newEndpoints);
+                              }}
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="https://api.example.com/endpoint"
+                            />
                             <button
-                              onClick={() => handleRemoveDepartment(dept.id)}
-                              className="text-red-500 hover:text-red-700 transition-colors"
+                              type="button"
+                              onClick={() => {
+                                const newEndpoints = [...(settings.integrations?.externalSystems?.endpoints || [])];
+                                newEndpoints.splice(index, 1);
+                                updateSettings('integrations.externalSystems.endpoints', newEndpoints);
+                              }}
+                              className="p-2 text-red-600 hover:text-red-800 transition-colors"
                             >
                               <X className="w-5 h-5" />
                             </button>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newEndpoints = [...(settings.integrations?.externalSystems?.endpoints || []), ''];
+                            updateSettings('integrations.externalSystems.endpoints', newEndpoints);
+                          }}
+                          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                        >
+                          + Add Endpoint
+                        </button>
+                      </div>
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Departments Settings */}
+          {activeTab === 'departments' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Department Management</h3>
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <p className="text-sm text-gray-700">
+                      Departments are used throughout the system to organize personnel, assets, and incidents. 
+                      Add all departments in your organization to ensure proper categorization and access control.
+                    </p>
+                  </div>
                   
-                  {showAddDepartment && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-                      <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
-                        <div className="p-6 border-b border-gray-200">
-                          <h2 className="text-xl font-bold text-gray-900">Add Department</h2>
+                  <div className="space-y-2">
+                    {(settings.departments?.list || []).map((dept, index) => (
+                      <div key={index} className="bg-white rounded-lg border border-gray-200 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                              <Building className="w-4 h-4 text-blue-600" />
+                            </div>
+                            <input
+                              type="text"
+                              value={dept.name}
+                              onChange={(e) => {
+                                const newList = [...(settings.departments?.list || [])];
+                                newList[index].name = e.target.value;
+                                updateSettings('departments.list', newList);
+                              }}
+                              className="text-sm font-medium text-gray-900 px-2 py-1 border border-transparent hover:border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Department Name"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newList = [...(settings.departments?.list || [])];
+                              newList.splice(index, 1);
+                              updateSettings('departments.list', newList);
+                            }}
+                            className="p-1 text-red-600 hover:text-red-800 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         </div>
                         
-                        <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Department Name *
+                            <label className="block text-xs font-medium text-gray-500 mb-1">
+                              Description
                             </label>
                             <input
                               type="text"
-                              value={newDepartment.name}
-                              onChange={(e) => setNewDepartment({...newDepartment, name: e.target.value})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              placeholder="e.g., Security Operations"
+                              value={dept.description}
+                              onChange={(e) => {
+                                const newList = [...(settings.departments?.list || [])];
+                                newList[index].description = e.target.value;
+                                updateSettings('departments.list', newList);
+                              }}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Department description"
                             />
                           </div>
                           
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Description
-                            </label>
-                            <textarea
-                              rows={3}
-                              value={newDepartment.description}
-                              onChange={(e) => setNewDepartment({...newDepartment, description: e.target.value})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              placeholder="Describe the department's function"
-                            />
-                          </div>
-                          
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                            <label className="block text-xs font-medium text-gray-500 mb-1">
                               Head Count
                             </label>
                             <input
                               type="number"
                               min="0"
-                              value={newDepartment.headCount}
-                              onChange={(e) => setNewDepartment({...newDepartment, headCount: parseInt(e.target.value) || 0})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              value={dept.headCount}
+                              onChange={(e) => {
+                                const newList = [...(settings.departments?.list || [])];
+                                newList[index].headCount = parseInt(e.target.value);
+                                updateSettings('departments.list', newList);
+                              }}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                           </div>
                           
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                            <label className="block text-xs font-medium text-gray-500 mb-1">
                               Security Level
                             </label>
                             <select
-                              value={newDepartment.securityLevel}
-                              onChange={(e) => setNewDepartment({...newDepartment, securityLevel: e.target.value})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              value={dept.securityLevel}
+                              onChange={(e) => {
+                                const newList = [...(settings.departments?.list || [])];
+                                newList[index].securityLevel = e.target.value;
+                                updateSettings('departments.list', newList);
+                              }}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             >
-                              <option value="low">Low</option>
                               <option value="standard">Standard</option>
-                              <option value="medium">Medium</option>
+                              <option value="elevated">Elevated</option>
                               <option value="high">High</option>
-                              <option value="critical">Critical</option>
+                              <option value="restricted">Restricted</option>
                             </select>
                           </div>
-                          
-                          <div className="flex justify-end space-x-4 pt-4">
-                            <button
-                              type="button"
-                              onClick={() => setShowAddDepartment(false)}
-                              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleAddDepartment}
-                              disabled={!newDepartment.name}
-                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              Add Department
-                            </button>
-                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Integrations Settings */}
-            {activeTab === 'integrations' && (
-              <div className="space-y-8">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-6">External Integrations</h2>
-                  
-                  <div className="space-y-6">
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Google Maps</h3>
-                      <div className="space-y-4">
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={config.integrations.googleMaps.enabled}
-                            onChange={(e) => updateNestedConfig('integrations', 'googleMaps', 'enabled', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="ml-2 text-sm font-medium text-gray-700">Enable Google Maps integration</span>
-                        </label>
-                        
-                        {config.integrations.googleMaps.enabled && (
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              API Key
-                            </label>
-                            <div className="relative">
-                              <input
-                                type={showPasswords ? 'text' : 'password'}
-                                value={config.integrations.googleMaps.apiKey}
-                                onChange={(e) => updateNestedConfig('integrations', 'googleMaps', 'apiKey', e.target.value)}
-                                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                placeholder="Enter your Google Maps API key"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setShowPasswords(!showPasswords)}
-                                className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                              >
-                                {showPasswords ? <EyeOff className="w-4 h-4 text-gray-400" /> : <Eye className="w-4 h-4 text-gray-400" />}
-                              </button>
-                            </div>
-                            <p className="mt-1 text-xs text-gray-500">
-                              Used for displaying maps in asset and personnel dashboards
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">External Systems</h3>
-                      <div className="space-y-4">
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={config.integrations.externalSystems.enabled}
-                            onChange={(e) => updateNestedConfig('integrations', 'externalSystems', 'enabled', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="ml-2 text-sm font-medium text-gray-700">Enable external system integrations</span>
-                        </label>
-                        
-                        <p className="text-sm text-gray-600">
-                          Configure connections to external security systems, threat intelligence feeds, and other data sources.
-                        </p>
-                      </div>
-                    </div>
+                    ))}
+                    
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newDept = {
+                          id: crypto.randomUUID(),
+                          name: '',
+                          description: '',
+                          headCount: 0,
+                          securityLevel: 'standard'
+                        };
+                        const newList = [...(settings.departments?.list || []), newDept];
+                        updateSettings('departments.list', newList);
+                      }}
+                      className="w-full px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm flex items-center justify-center space-x-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add Department</span>
+                    </button>
                   </div>
                 </div>
               </div>
-            )}
-
-            {/* AI Settings */}
-            {activeTab === 'ai' && (
-              <div className="space-y-8">
-                <div>
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center space-x-3">
-                      <h2 className="text-xl font-semibold text-gray-900">OdynSentinel AI Settings</h2>
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${config.ai.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
-                        {config.ai.enabled ? 'Enabled' : 'Disabled'}
-                      </span>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={config.ai.enabled}
-                        onChange={(e) => updateConfig('ai', 'enabled', e.target.checked)}
-                        className="sr-only peer" 
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-                  
-                  <div className="space-y-6">
-                    {/* Token Usage */}
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-gray-900">Token Usage</h3>
-                        <div className="flex items-center space-x-2">
-                          <Brain className="w-5 h-5 text-purple-500" />
-                          <span className="text-sm text-purple-600 font-medium">{config.ai.model}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-6">
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium text-gray-700">Current Usage</span>
-                            <div className="flex items-center space-x-1">
-                              <span className="text-sm font-bold text-gray-900">{config.ai.tokensUsed.toLocaleString()}</span>
-                              <span className="text-xs text-gray-500">/ {config.ai.tokenLimit.toLocaleString()} tokens</span>
-                            </div>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2.5">
-                            <div 
-                              className={`h-2.5 rounded-full ${tokenUsageColor}`} 
-                              style={{ width: `${tokenUsagePercentage}%` }}
-                            ></div>
-                          </div>
-                          <div className="flex justify-between mt-1 text-xs text-gray-500">
-                            <span>{tokenUsagePercentage}% used</span>
-                            <span>{Math.max(0, config.ai.tokenLimit - config.ai.tokensUsed).toLocaleString()} tokens remaining</span>
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Token Limit
-                            </label>
-                            <input
-                              type="number"
-                              min="1000000"
-                              step="1000000"
-                              value={config.ai.tokenLimit}
-                              onChange={(e) => updateConfig('ai', 'tokenLimit', parseInt(e.target.value))}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                            <p className="mt-1 text-xs text-gray-500">
-                              Monthly token allocation for your organization
-                            </p>
-                          </div>
-                          
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              AI Model
-                            </label>
-                            <select
-                              value={config.ai.model}
-                              onChange={(e) => updateConfig('ai', 'model', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            >
-                              <option value="OdynSentinel-Standard">OdynSentinel Standard</option>
-                              <option value="OdynSentinel-Pro">OdynSentinel Pro</option>
-                              <option value="OdynSentinel-Enterprise">OdynSentinel Enterprise</option>
-                            </select>
-                            <p className="mt-1 text-xs text-gray-500">
-                              Higher tier models provide more advanced analysis capabilities
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            className="px-4 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
-                            onClick={() => updateConfig('ai', 'tokensUsed', 0)}
-                          >
-                            Reset Token Counter
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Model Configuration */}
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Model Configuration</h3>
-                      <div className="space-y-6">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Temperature (0.1-1.0)
-                          </label>
-                          <div className="flex items-center space-x-4">
-                            <input
-                              type="range"
-                              min="0.1"
-                              max="1"
-                              step="0.1"
-                              value={config.ai.settings.temperature}
-                              onChange={(e) => updateNestedConfig('ai', 'settings', 'temperature', parseFloat(e.target.value))}
-                              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                            />
-                            <span className="text-sm font-medium text-gray-900 w-10">
-                              {config.ai.settings.temperature.toFixed(1)}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-xs text-gray-500">
-                            Lower values produce more consistent, deterministic outputs. Higher values produce more creative, varied outputs.
-                          </p>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Context Window
-                          </label>
-                          <select
-                            value={config.ai.settings.contextWindow}
-                            onChange={(e) => updateNestedConfig('ai', 'settings', 'contextWindow', parseInt(e.target.value))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          >
-                            <option value="8000">8K tokens</option>
-                            <option value="16000">16K tokens</option>
-                            <option value="32000">32K tokens</option>
-                            <option value="64000">64K tokens</option>
-                          </select>
-                          <p className="mt-1 text-xs text-gray-500">
-                            Larger context windows allow the AI to consider more information but use more tokens per request
-                          </p>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Response Length
-                          </label>
-                          <select
-                            value={config.ai.settings.responseLength}
-                            onChange={(e) => updateNestedConfig('ai', 'settings', 'responseLength', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          >
-                            <option value="concise">Concise</option>
-                            <option value="balanced">Balanced</option>
-                            <option value="detailed">Detailed</option>
-                          </select>
-                          <p className="mt-1 text-xs text-gray-500">
-                            Controls the verbosity of AI responses across the platform
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Usage Notifications */}
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Usage Notifications</h3>
-                      <div className="space-y-4">
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={config.ai.notifications.approachingLimit}
-                            onChange={(e) => updateNestedConfig('ai', 'notifications', 'approachingLimit', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="ml-2 text-sm font-medium text-gray-700">
-                            Notify when approaching token limit
-                          </span>
-                        </label>
-                        
-                        {config.ai.notifications.approachingLimit && (
-                          <div className="ml-7">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Threshold Percentage
-                            </label>
-                            <div className="flex items-center space-x-4">
-                              <input
-                                type="range"
-                                min="50"
-                                max="95"
-                                step="5"
-                                value={config.ai.notifications.limitThreshold}
-                                onChange={(e) => updateNestedConfig('ai', 'notifications', 'limitThreshold', parseInt(e.target.value))}
-                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                              />
-                              <span className="text-sm font-medium text-gray-900 w-10">
-                                {config.ai.notifications.limitThreshold}%
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                        
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={config.ai.notifications.weeklyUsageReport}
-                            onChange={(e) => updateNestedConfig('ai', 'notifications', 'weeklyUsageReport', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="ml-2 text-sm font-medium text-gray-700">
-                            Send weekly usage reports
-                          </span>
-                        </label>
-                      </div>
-                    </div>
-                    
-                    {/* Usage Statistics */}
-                    <div className="bg-gray-50 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                        <BarChart className="w-5 h-5 text-purple-500" />
-                        <span>Usage Statistics</span>
-                      </h3>
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="bg-white p-4 rounded-lg border border-gray-200">
-                            <div className="text-sm text-gray-500 mb-1">Today</div>
-                            <div className="text-xl font-bold text-gray-900">
-                              {Math.round(config.ai.tokensUsed * 0.05).toLocaleString()}
-                            </div>
-                            <div className="text-xs text-gray-500">tokens</div>
-                          </div>
-                          
-                          <div className="bg-white p-4 rounded-lg border border-gray-200">
-                            <div className="text-sm text-gray-500 mb-1">This Week</div>
-                            <div className="text-xl font-bold text-gray-900">
-                              {Math.round(config.ai.tokensUsed * 0.35).toLocaleString()}
-                            </div>
-                            <div className="text-xs text-gray-500">tokens</div>
-                          </div>
-                          
-                          <div className="bg-white p-4 rounded-lg border border-gray-200">
-                            <div className="text-sm text-gray-500 mb-1">This Month</div>
-                            <div className="text-xl font-bold text-gray-900">
-                              {config.ai.tokensUsed.toLocaleString()}
-                            </div>
-                            <div className="text-xs text-gray-500">tokens</div>
-                          </div>
-                        </div>
-                        
-                        <div className="bg-white p-4 rounded-lg border border-gray-200">
-                          <h4 className="text-sm font-medium text-gray-700 mb-3">Usage by Feature</h4>
-                          <div className="space-y-3">
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-gray-600">Risk Assessment</span>
-                                <span className="text-xs font-medium text-gray-900">
-                                  {Math.round(config.ai.tokensUsed * 0.35).toLocaleString()} tokens
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                <div className="bg-purple-500 h-1.5 rounded-full" style={{ width: '35%' }}></div>
-                              </div>
-                            </div>
-                            
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-gray-600">Threat Intelligence</span>
-                                <span className="text-xs font-medium text-gray-900">
-                                  {Math.round(config.ai.tokensUsed * 0.25).toLocaleString()} tokens
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: '25%' }}></div>
-                              </div>
-                            </div>
-                            
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-gray-600">Travel Security</span>
-                                <span className="text-xs font-medium text-gray-900">
-                                  {Math.round(config.ai.tokensUsed * 0.20).toLocaleString()} tokens
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                <div className="bg-green-500 h-1.5 rounded-full" style={{ width: '20%' }}></div>
-                              </div>
-                            </div>
-                            
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-gray-600">Personnel Monitoring</span>
-                                <span className="text-xs font-medium text-gray-900">
-                                  {Math.round(config.ai.tokensUsed * 0.15).toLocaleString()} tokens
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                <div className="bg-orange-500 h-1.5 rounded-full" style={{ width: '15%' }}></div>
-                              </div>
-                            </div>
-                            
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-gray-600">Other</span>
-                                <span className="text-xs font-medium text-gray-900">
-                                  {Math.round(config.ai.tokensUsed * 0.05).toLocaleString()} tokens
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                <div className="bg-gray-500 h-1.5 rounded-full" style={{ width: '5%' }}></div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div className="text-center">
-                          <button
-                            type="button"
-                            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                          >
-                            View Detailed Usage Reports
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Save Button */}
-          <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                {saved && (
-                  <>
-                    <CheckCircle className="w-5 h-5 text-green-500" />
-                    <span className="text-sm text-green-600">Settings saved successfully</span>
-                  </>
-                )}
-                {error && (
-                  <>
-                    <AlertCircle className="w-5 h-5 text-red-500" />
-                    <span className="text-sm text-red-600">{error}</span>
-                  </>
-                )}
-              </div>
-              <button
-                onClick={handleSave}
-                disabled={saving || !hasPermission('organizations.update')}
-                className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4" />
-                    <span>Save Settings</span>
-                  </>
-                )}
-              </button>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

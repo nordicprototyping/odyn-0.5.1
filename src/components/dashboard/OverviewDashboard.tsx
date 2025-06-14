@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import RiskScoreWidget from '../RiskScoreWidget';
+import AIRiskInsights from '../AIRiskInsights';
 import { 
   getStatusIcon, 
   getPersonnelStatusIcon, 
@@ -21,6 +22,12 @@ import {
   getStatusColor, 
   getPersonnelStatusColor 
 } from '../../utils/uiHelpers';
+import { aiService } from '../../services/aiService';
+
+interface OverviewDashboardProps {
+  score: number;
+  previousScore: number;
+}
 
 interface ThreatLevel {
   level: string;
@@ -57,13 +64,14 @@ interface PersonnelOverview {
   aiRiskScore: number;
 }
 
-const OverviewDashboard: React.FC = () => {
+const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ score, previousScore }) => {
   const [threatLevels, setThreatLevels] = useState<ThreatLevel[]>([]);
   const [recentAlerts, setRecentAlerts] = useState<RecentAlert[]>([]);
   const [assetsOverview, setAssetsOverview] = useState<AssetOverview[]>([]);
   const [personnelOverview, setPersonnelOverview] = useState<PersonnelOverview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [aiInsights, setAiInsights] = useState<any>(null);
 
   // Keep the external events as requested
   const externalEvents = [
@@ -183,6 +191,30 @@ const OverviewDashboard: React.FC = () => {
         aiRiskScore: (person.ai_risk_score as any)?.overall || 0
       })) || [];
 
+      // Get AI insights for the organization
+      try {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('id')
+          .single();
+        
+        if (orgData?.id) {
+          const aggregateData = {
+            assets: assets || [],
+            personnel: personnel || [],
+            incidents: incidents || [],
+            risks: [],
+            travelPlans: []
+          };
+          
+          const aiResult = await aiService.scoreOrganizationRisk(orgData.id, aggregateData);
+          setAiInsights(aiResult);
+        }
+      } catch (aiError) {
+        console.error('Error fetching AI insights:', aiError);
+        // Continue with other data even if AI insights fail
+      }
+
       setThreatLevels(threatLevelsData);
       setRecentAlerts(recentAlertsData);
       setAssetsOverview(assetsOverviewData);
@@ -241,8 +273,8 @@ const OverviewDashboard: React.FC = () => {
         {/* AI Risk Score Widget - Takes up 2 columns on large screens */}
         <div className="lg:col-span-2">
           <RiskScoreWidget 
-            score={42} 
-            previousScore={38} 
+            score={score} 
+            previousScore={previousScore} 
             className="h-full"
           />
         </div>
@@ -361,6 +393,20 @@ const OverviewDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* AI Insights Section */}
+      {aiInsights && (
+        <div className="mb-8 relative z-10">
+          <AIRiskInsights
+            score={aiInsights.score}
+            explanation={aiInsights.explanation}
+            recommendations={aiInsights.recommendations}
+            confidence={aiInsights.confidence}
+            trend={aiInsights.trend}
+            components={aiInsights.components}
+          />
+        </div>
+      )}
 
       {/* External Events Section */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8 relative z-10">
