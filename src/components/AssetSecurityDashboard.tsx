@@ -60,7 +60,7 @@ const AssetSecurityDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, user, profile } = useAuth();
 
   // Add console log to track rendering and state
   console.log('AssetSecurityDashboard rendering, showAddAssetForm:', showAddAssetForm);
@@ -111,6 +111,32 @@ const AssetSecurityDashboard: React.FC = () => {
     }
   };
 
+  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
+    if (!profile?.organization_id) {
+      console.warn('Cannot log audit event: no organization ID available');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase.from('audit_logs').insert({
+        user_id: user?.id || null,
+        organization_id: profile.organization_id,
+        action,
+        resource_type: 'asset',
+        resource_id: resourceId,
+        details,
+        ip_address: null, // We'll skip IP detection for now to avoid additional API calls
+        user_agent: navigator.userAgent
+      });
+
+      if (error) {
+        console.error('Error logging audit event:', error);
+      }
+    } catch (error) {
+      console.error('Unexpected error logging audit event:', error);
+    }
+  };
+
   const handleDeleteAsset = async (assetId: string, assetName: string) => {
     // Ask for confirmation before deleting
     const confirmDelete = window.confirm(`Are you sure you want to delete the asset "${assetName}"? This action cannot be undone.`);
@@ -133,23 +159,10 @@ const AssetSecurityDashboard: React.FC = () => {
       }
 
       // Log the deletion in audit logs
-      try {
-        await supabase
-          .from('audit_logs')
-          .insert([{
-            user_id: user?.id,
-            action: 'asset_deleted',
-            resource_type: 'asset',
-            resource_id: assetId,
-            details: { 
-              asset_name: assetName,
-              deleted_at: new Date().toISOString()
-            }
-          }]);
-      } catch (logError) {
-        console.error('Error logging asset deletion:', logError);
-        // Continue even if logging fails
-      }
+      await logAuditEvent('asset_deleted', assetId, { 
+        asset_name: assetName,
+        deleted_at: new Date().toISOString()
+      });
 
       // Close the detail view if the deleted asset was selected
       if (selectedAsset?.id === assetId) {

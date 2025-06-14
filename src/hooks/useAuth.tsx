@@ -79,7 +79,7 @@ const ROLE_PERMISSIONS = {
 };
 
 // Helper function to wait for a specified duration
-const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve));
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -105,16 +105,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setOrganization(fetchedOrganization);
           }
           
-          // Log authentication events
-          if (event) {
-            await logAuditEvent(event, session.user.id);
+          // Log authentication events only after profile is loaded
+          if (event && fetchedProfile?.organization_id) {
+            await logAuditEvent(event, session.user.id, fetchedProfile.organization_id);
           }
         } else {
+          // Log logout before clearing profile
+          if (event === 'SIGNED_OUT' && user?.id && profile?.organization_id) {
+            await logAuditEvent('logout', user.id, profile.organization_id);
+          }
           setProfile(null);
           setOrganization(null);
-          if (event === 'SIGNED_OUT') {
-            await logAuditEvent('logout', user?.id);
-          }
         }
       } catch (error) {
         console.error('Error handling auth change:', error);
@@ -196,20 +197,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logAuditEvent = async (action: string, userId?: string, details?: Record<string, any>) => {
-    if (!profile?.organization_id) return;
+  const logAuditEvent = async (action: string, userId?: string, organizationId?: string, details?: Record<string, any>) => {
+    // Use the provided organizationId or fall back to profile's organization_id
+    const orgId = organizationId || profile?.organization_id;
+    
+    if (!orgId) {
+      console.warn('Cannot log audit event: no organization ID available');
+      return;
+    }
     
     try {
-      await supabase.from('audit_logs').insert({
+      const { error } = await supabase.from('audit_logs').insert({
         user_id: userId || null,
-        organization_id: profile.organization_id,
+        organization_id: orgId,
         action,
         details,
         ip_address: await getClientIP(),
         user_agent: navigator.userAgent
       });
+
+      if (error) {
+        console.error('Error logging audit event:', error);
+      }
     } catch (error) {
-      console.error('Error logging audit event:', error);
+      console.error('Unexpected error logging audit event:', error);
     }
   };
 
@@ -231,7 +242,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        await logAuditEvent('login_failed', undefined, { email, error: error.message });
+        // Don't log failed login attempts to audit_logs since we don't have organization context yet
+        console.warn('Login failed:', error.message);
         return { error: error.message };
       }
 
@@ -279,13 +291,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        await logAuditEvent('signup_failed', undefined, { email, error: error.message });
+        console.warn('Signup failed:', error.message);
         return { error: error.message };
       }
 
-      if (data.user) {
-        await logAuditEvent('signup_success', data.user.id);
-      }
+      // Note: We can't log signup events to audit_logs here because the user profile
+      // and organization haven't been created yet. This will be handled by the
+      // database trigger or signup completion process.
 
       return {};
     } catch (error) {
@@ -307,7 +319,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: error.message };
       }
 
-      await logAuditEvent('password_reset_requested', undefined, { email });
+      // Don't log password reset requests since we don't have user/org context
       return {};
     } catch (error) {
       return { error: 'An unexpected error occurred' };
@@ -322,7 +334,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: error.message };
       }
 
-      await logAuditEvent('password_updated', user?.id);
+      if (profile?.organization_id) {
+        await logAuditEvent('password_updated', user?.id, profile.organization_id);
+      }
       return {};
     } catch (error) {
       return { error: 'An unexpected error occurred' };
@@ -361,7 +375,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         })
         .eq('user_id', user?.id);
 
-      await logAuditEvent('two_factor_enabled', user?.id);
+      if (profile?.organization_id) {
+        await logAuditEvent('two_factor_enabled', user?.id, profile.organization_id);
+      }
       await refreshProfile();
       
       return { backupCodes };
@@ -391,7 +407,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         })
         .eq('user_id', user?.id);
 
-      await logAuditEvent('two_factor_disabled', user?.id);
+      if (profile?.organization_id) {
+        await logAuditEvent('two_factor_disabled', user?.id, profile.organization_id);
+      }
       await refreshProfile();
       
       return {};
