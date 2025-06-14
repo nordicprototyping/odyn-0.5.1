@@ -1,25 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { 
-  Shield, 
-  Brain, 
-  Globe, 
-  FileText, 
-  Users, 
-  Plane, 
-  AlertCircle, 
-  Settings, 
-  X, 
-  ChevronDown, 
-  LogOut, 
-  User, 
-  Crown, 
-  UserCheck,
-  Building,
-  Building2,
-  LayoutDashboard,
-  TriangleAlert
-} from 'lucide-react';
+import { Shield, Brain, Globe, FileText, Users, Plane, AlertCircle, Settings, X, ChevronDown, LogOut, User, Crown, UserCheck, Building, Building2, LayoutDashboard, AlertTriangle as TriangleAlert } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 interface MenuItem {
