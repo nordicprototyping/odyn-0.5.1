@@ -74,33 +74,8 @@ const AIUsageMonitoring: React.FC = () => {
       const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
       const logs = await aiService.getTokenUsageHistory(organizationId, days);
       
-      // Fetch user emails for logs
-      const userIds = logs.map(log => log.user_id).filter(Boolean);
-      const uniqueUserIds = [...new Set(userIds)];
-      
-      if (uniqueUserIds.length > 0) {
-        const { data: users, error: usersError } = await supabase.auth.admin.listUsers({
-          perPage: 1000
-        });
-        
-        if (!usersError && users) {
-          const userMap = new Map();
-          users.users.forEach(user => {
-            userMap.set(user.id, user.email);
-          });
-          
-          const logsWithEmails = logs.map(log => ({
-            ...log,
-            user_email: log.user_id ? userMap.get(log.user_id) : null
-          }));
-          
-          setUsageLogs(logsWithEmails);
-        } else {
-          setUsageLogs(logs);
-        }
-      } else {
-        setUsageLogs(logs);
-      }
+      // Set usage logs without fetching user emails (removed admin API call)
+      setUsageLogs(logs);
       
       // Fetch AI settings
       const { data: orgData, error: orgError } = await supabase
@@ -236,7 +211,7 @@ const AIUsageMonitoring: React.FC = () => {
     const userMap = new Map<string, number>();
     
     usageLogs.forEach(log => {
-      const user = log.user_email || log.user_id || 'Unknown';
+      const user = log.user_id || 'System';
       userMap.set(user, (userMap.get(user) || 0) + log.tokens_used);
     });
     
@@ -565,7 +540,7 @@ const AIUsageMonitoring: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center text-sm text-gray-900">
                       <User className="w-4 h-4 mr-2 text-gray-400" />
-                      {log.user_email || log.user_id || 'System'}
+                      {log.user_id || 'System'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
