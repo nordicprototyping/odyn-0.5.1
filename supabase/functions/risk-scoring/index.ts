@@ -117,7 +117,10 @@ async function callChutesAI(prompt: string, systemPrompt: string): Promise<any> 
         ],
         stream: false,
         max_tokens: 1024,
-        temperature: 0.3
+        temperature: 0.3,
+        response_format: {
+          type: 'json_object'
+        }
       })
     });
     
@@ -169,7 +172,7 @@ async function scoreAssetRisk(assetData: any, organizationId: string, userId: st
   `;
   
   const prompt = `
-    Please analyze the following asset data and provide a comprehensive risk assessment:
+    Please analyze the following asset data and provide a comprehensive risk assessment in JSON format:
     
     Asset Name: ${assetData.name}
     Asset Type: ${assetData.type}
@@ -291,7 +294,7 @@ async function scorePersonnelRisk(personnelData: any, organizationId: string, us
   `;
   
   const prompt = `
-    Please analyze the following personnel data and provide a comprehensive risk assessment:
+    Please analyze the following personnel data and provide a comprehensive risk assessment in JSON format:
     
     Name: ${personnelData.name}
     Employee ID: ${personnelData.employee_id}
@@ -400,7 +403,7 @@ async function scoreTravelRisk(travelData: any, organizationId: string, userId: 
   `;
   
   const prompt = `
-    Please analyze the following travel plan and provide a comprehensive risk assessment:
+    Please analyze the following travel plan and provide a comprehensive risk assessment in JSON format:
     
     Traveler: ${travelData.traveler_name}
     Department: ${travelData.traveler_department}
@@ -506,7 +509,7 @@ async function scoreOrganizationRisk(organizationId: string, userId: string | nu
   `;
   
   const prompt = `
-    Please analyze the following organization data and provide a comprehensive risk assessment:
+    Please analyze the following organization data and provide a comprehensive risk assessment in JSON format:
     
     Assets: ${aggregateData.assets.length} total assets
     - Secure assets: ${aggregateData.assets.filter((a: any) => a.status === 'secure').length}
