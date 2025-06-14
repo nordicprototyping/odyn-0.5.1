@@ -60,7 +60,7 @@ const AssetSecurityDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
 
   // Add console log to track rendering and state
   console.log('AssetSecurityDashboard rendering, showAddAssetForm:', showAddAssetForm);
@@ -108,6 +108,62 @@ const AssetSecurityDashboard: React.FC = () => {
     } catch (err) {
       console.error('Error adding asset:', err);
       throw err;
+    }
+  };
+
+  const handleDeleteAsset = async (assetId: string, assetName: string) => {
+    // Ask for confirmation before deleting
+    const confirmDelete = window.confirm(`Are you sure you want to delete the asset "${assetName}"? This action cannot be undone.`);
+    
+    if (!confirmDelete) {
+      return; // User cancelled the operation
+    }
+    
+    try {
+      setLoading(true);
+      
+      // Delete the asset from the database
+      const { error } = await supabase
+        .from('assets')
+        .delete()
+        .eq('id', assetId);
+
+      if (error) {
+        throw error;
+      }
+
+      // Log the deletion in audit logs
+      try {
+        await supabase
+          .from('audit_logs')
+          .insert([{
+            user_id: user?.id,
+            action: 'asset_deleted',
+            resource_type: 'asset',
+            resource_id: assetId,
+            details: { 
+              asset_name: assetName,
+              deleted_at: new Date().toISOString()
+            }
+          }]);
+      } catch (logError) {
+        console.error('Error logging asset deletion:', logError);
+        // Continue even if logging fails
+      }
+
+      // Close the detail view if the deleted asset was selected
+      if (selectedAsset?.id === assetId) {
+        setSelectedAsset(null);
+      }
+      
+      // Refresh the assets list
+      await fetchAssets();
+      
+    } catch (err) {
+      console.error('Error deleting asset:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete asset');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -585,17 +641,32 @@ const AssetSecurityDashboard: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => setSelectedAsset(asset)}
-                          className="text-blue-600 hover:text-blue-900 mr-3"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        {hasPermission('assets.update') && (
-                          <button className="text-gray-600 hover:text-gray-900">
-                            <Edit className="w-4 h-4" />
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => setSelectedAsset(asset)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="View details"
+                          >
+                            <Eye className="w-4 h-4" />
                           </button>
-                        )}
+                          {hasPermission('assets.update') && (
+                            <button 
+                              className="text-gray-600 hover:text-gray-900"
+                              title="Edit asset"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          )}
+                          {hasPermission('assets.delete') && (
+                            <button 
+                              onClick={() => handleDeleteAsset(asset.id, asset.name)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Delete asset"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -665,12 +736,24 @@ const AssetSecurityDashboard: React.FC = () => {
                   </div>
                 </div>
                 
-                <button
-                  onClick={() => setSelectedAsset(asset)}
-                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  View Details
-                </button>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setSelectedAsset(asset)}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    View Details
+                  </button>
+                  
+                  {hasPermission('assets.delete') && (
+                    <button
+                      onClick={() => handleDeleteAsset(asset.id, asset.name)}
+                      className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
+                      title="Delete asset"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -706,12 +789,25 @@ const AssetSecurityDashboard: React.FC = () => {
                     </span>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedAsset(null)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <XCircle className="w-6 h-6" />
-                </button>
+                <div className="flex items-center space-x-2">
+                  {hasPermission('assets.delete') && (
+                    <button
+                      onClick={() => {
+                        handleDeleteAsset(selectedAsset.id, selectedAsset.name);
+                      }}
+                      className="p-2 text-red-600 hover:text-red-800 transition-colors"
+                      title="Delete asset"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelectedAsset(null)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
             </div>
             
