@@ -43,8 +43,8 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
     { id: 'assets', label: 'Assets', icon: Building2, path: '/dashboard/assets' },
     { id: 'personnel', label: 'Personnel', icon: Users, path: '/dashboard/personnel' },
     { id: 'travel', label: 'Travel Security', icon: Plane, path: '/dashboard/travel' },
-    { id: 'incidents', label: 'Incident Management', icon: AlertCircle, path: '/dashboard/incidents' },
-    { id: 'mitigations', label: 'Mitigation Management', icon: Shield, path: '/dashboard/mitigations' },
+    { id: 'incidents', label: 'Incidents', icon: AlertCircle, path: '/dashboard/incidents' },
+    { id: 'mitigations', label: 'Mitigations', icon: Shield, path: '/dashboard/mitigations' },
     // Admin Tools Section
     {
       label: 'Admin Tools',
