@@ -308,7 +308,7 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
   'Marshall Islands',
   'Mauritania',
   'Mauritius',
-  'Mexico,
+  'Mexico',
   'Micronesia',
   'Moldova',
   'Monaco',
