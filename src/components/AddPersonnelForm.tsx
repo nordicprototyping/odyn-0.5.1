@@ -14,13 +14,15 @@ import { LocationData } from '../services/nominatimService';
 
 type PersonnelInsert = Database['public']['Tables']['personnel_details']['Insert'];
 type Asset = Database['public']['Tables']['assets']['Row'];
+type Personnel = Database['public']['Tables']['personnel_details']['Row'];
 
 interface AddPersonnelFormProps {
   onClose: () => void;
   onSubmit: (data: any) => Promise<void>;
+  personnelToEdit?: Personnel | null;
 }
 
-const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }) => {
+const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit, personnelToEdit }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiScoring, setAiScoring] = useState(false);
@@ -30,7 +32,7 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(false);
   
-  const { formData, updateFormData } = useFormState({
+  const { formData, updateFormData, setFormData } = useFormState({
     name: '',
     employee_id: '',
     date_of_birth: '',
@@ -78,6 +80,38 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
     status: 'active',
     last_seen: 'Just now'
   });
+
+  // Initialize form with personnel data if editing
+  useEffect(() => {
+    if (personnelToEdit) {
+      // Set mitigations if they exist
+      if (personnelToEdit.mitigations && Array.isArray(personnelToEdit.mitigations)) {
+        setMitigations(personnelToEdit.mitigations as AppliedMitigation[]);
+      }
+      
+      // Format date of birth if it exists
+      const formattedDateOfBirth = personnelToEdit.date_of_birth 
+        ? new Date(personnelToEdit.date_of_birth).toISOString().split('T')[0]
+        : '';
+      
+      // Update form data with personnel values
+      setFormData({
+        name: personnelToEdit.name,
+        employee_id: personnelToEdit.employee_id,
+        date_of_birth: formattedDateOfBirth,
+        category: personnelToEdit.category,
+        department: personnelToEdit.department,
+        current_location: personnelToEdit.current_location as any,
+        work_asset_id: personnelToEdit.work_asset_id || '',
+        clearance_level: personnelToEdit.clearance_level,
+        emergency_contact: personnelToEdit.emergency_contact as any,
+        travel_status: personnelToEdit.travel_status as any,
+        ai_risk_score: personnelToEdit.ai_risk_score as any,
+        status: personnelToEdit.status,
+        last_seen: personnelToEdit.last_seen
+      });
+    }
+  }, [personnelToEdit, setFormData]);
 
   // Fetch assets when component mounts
   useEffect(() => {
@@ -148,33 +182,36 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
         organization_id: profile?.organization_id || ''
       };
 
-      // Set AI scoring state to show loading indicator
-      setAiScoring(true);
-
-      // Call AI service to get risk score
+      // Only perform AI scoring for new personnel or if explicitly requested
       let aiRiskScore = { ...formData.ai_risk_score };
       
-      try {
-        const aiResult = await aiService.scorePersonnelRisk(personnelData);
-        
-        // Update risk score with AI-calculated values
-        aiRiskScore = {
-          overall: aiResult.score,
-          components: aiResult.components || aiRiskScore.components,
-          trend: (aiResult.trend as 'improving' | 'stable' | 'deteriorating') || 'stable',
-          lastUpdated: new Date().toISOString(),
-          confidence: aiResult.confidence,
-          predictions: aiResult.predictions || {
-            nextWeek: Math.round(aiResult.score * (1 + (Math.random() * 0.1 - 0.05))),
-            nextMonth: Math.round(aiResult.score * (1 + (Math.random() * 0.2 - 0.1)))
-          },
-          explanation: aiResult.explanation
-        };
-      } catch (aiError) {
-        console.error('Error getting AI risk score:', aiError);
-        // Continue with default risk score if AI scoring fails
-      } finally {
-        setAiScoring(false);
+      if (!personnelToEdit) {
+        // Set AI scoring state to show loading indicator
+        setAiScoring(true);
+
+        // Call AI service to get risk score
+        try {
+          const aiResult = await aiService.scorePersonnelRisk(personnelData);
+          
+          // Update risk score with AI-calculated values
+          aiRiskScore = {
+            overall: aiResult.score,
+            components: aiResult.components || aiRiskScore.components,
+            trend: (aiResult.trend as 'improving' | 'stable' | 'deteriorating') || 'stable',
+            lastUpdated: new Date().toISOString(),
+            confidence: aiResult.confidence,
+            predictions: aiResult.predictions || {
+              nextWeek: Math.round(aiResult.score * (1 + (Math.random() * 0.1 - 0.05))),
+              nextMonth: Math.round(aiResult.score * (1 + (Math.random() * 0.2 - 0.1)))
+            },
+            explanation: aiResult.explanation
+          };
+        } catch (aiError) {
+          console.error('Error getting AI risk score:', aiError);
+          // Continue with default risk score if AI scoring fails
+        } finally {
+          setAiScoring(false);
+        }
       }
       
       // Calculate effective risk score based on mitigations
@@ -203,6 +240,11 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
         mitigations: mitigations.length > 0 ? mitigations : null
       };
 
+      // If editing, include the ID in the data
+      if (personnelToEdit) {
+        finalPersonnelData.id = personnelToEdit.id;
+      }
+
       await onSubmit(finalPersonnelData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add personnel');
@@ -221,7 +263,7 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
                 <User className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Add New Personnel</h2>
+                <h2 className="text-xl font-bold text-gray-900">{personnelToEdit ? 'Edit Personnel' : 'Add New Personnel'}</h2>
                 <p className="text-gray-600">Enter personnel details and security information</p>
               </div>
             </div>
@@ -518,12 +560,12 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
               {loading || aiScoring ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{aiScoring ? 'Calculating AI Risk Score...' : 'Adding...'}</span>
+                  <span>{aiScoring ? 'Calculating AI Risk Score...' : (personnelToEdit ? 'Updating...' : 'Adding...')}</span>
                 </>
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  <span>Add Personnel</span>
+                  <span>{personnelToEdit ? 'Update Personnel' : 'Add Personnel'}</span>
                 </>
               )}
             </button>

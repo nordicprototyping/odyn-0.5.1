@@ -31,6 +31,8 @@ import {
   Plus,
   Upload,
   Loader2,
+  Trash2,
+  Edit,
   Cake
 } from 'lucide-react';
 import GoogleMapComponent from './common/GoogleMapComponent';
@@ -50,6 +52,7 @@ const PersonnelDashboard: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'map'>('list');
   const [riskFilter, setRiskFilter] = useState<string>('all');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingPersonnel, setEditingPersonnel] = useState<any | null>(null);
   const [workAssets, setWorkAssets] = useState<{[key: string]: string}>({});
 
   const { hasPermission } = useAuth();
@@ -58,7 +61,9 @@ const PersonnelDashboard: React.FC = () => {
     loading, 
     error, 
     fetchPersonnel, 
-    addPersonnel 
+    addPersonnel,
+    updatePersonnel,
+    deletePersonnel
   } = usePersonnel();
 
   // Add console log to track rendering and state
@@ -101,6 +106,50 @@ const PersonnelDashboard: React.FC = () => {
     } catch (err) {
       console.error('Error adding personnel:', err);
       throw err;
+    }
+  };
+
+  const handleUpdatePersonnel = async (id: string, personnelData: any) => {
+    try {
+      await updatePersonnel(id, personnelData);
+      setShowAddForm(false);
+      setEditingPersonnel(null);
+      
+      // If the updated personnel was selected, refresh the selected personnel
+      if (selectedPersonnel && selectedPersonnel.id === id) {
+        const updatedPerson = personnelData.find((p: any) => p.id === id);
+        if (updatedPerson) {
+          setSelectedPersonnel(updatedPerson);
+        }
+      }
+    } catch (err) {
+      console.error('Error updating personnel:', err);
+      throw err;
+    }
+  };
+
+  const handleEditPersonnel = (personnel: any) => {
+    setEditingPersonnel(personnel);
+    setShowAddForm(true);
+  };
+
+  const handleDeletePersonnel = async (id: string, name: string) => {
+    // Ask for confirmation before deleting
+    const confirmDelete = window.confirm(`Are you sure you want to delete ${name}? This action cannot be undone.`);
+    
+    if (!confirmDelete) {
+      return; // User cancelled the operation
+    }
+    
+    try {
+      await deletePersonnel(id);
+      
+      // Close the detail view if the deleted personnel was selected
+      if (selectedPersonnel?.id === id) {
+        setSelectedPersonnel(null);
+      }
+    } catch (err) {
+      console.error('Error deleting personnel:', err);
     }
   };
 
@@ -286,6 +335,7 @@ const PersonnelDashboard: React.FC = () => {
               onClick={() => {
                 console.log('Add Personnel button clicked, setting showAddForm to true');
                 setShowAddForm(true);
+                setEditingPersonnel(null); // Ensure we're in "add" mode, not "edit" mode
               }}
               className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
@@ -538,13 +588,34 @@ const PersonnelDashboard: React.FC = () => {
                         <span className="text-sm text-gray-500">None</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => setSelectedPersonnel(person)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        View Details
-                      </button>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => setSelectedPersonnel(person)}
+                          className="text-blue-600 hover:text-blue-900"
+                          title="View details"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {hasPermission('personnel.update') && (
+                          <button
+                            onClick={() => handleEditPersonnel(person)}
+                            className="text-gray-600 hover:text-gray-900"
+                            title="Edit personnel"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        )}
+                        {hasPermission('personnel.delete') && (
+                          <button
+                            onClick={() => handleDeletePersonnel(person.id, person.name)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete personnel"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -617,22 +688,51 @@ const PersonnelDashboard: React.FC = () => {
                 </div>
               </div>
               
-              <button
-                onClick={() => setSelectedPersonnel(person)}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                View Details
-              </button>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setSelectedPersonnel(person)}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  View Details
+                </button>
+                
+                {hasPermission('personnel.update') && (
+                  <button
+                    onClick={() => handleEditPersonnel(person)}
+                    className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+                    title="Edit personnel"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                )}
+                
+                {hasPermission('personnel.delete') && (
+                  <button
+                    onClick={() => handleDeletePersonnel(person.id, person.name)}
+                    className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
+                    title="Delete personnel"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Add Personnel Form Modal */}
+      {/* Add/Edit Personnel Form Modal */}
       {showAddForm && (
         <AddPersonnelForm
-          onClose={() => setShowAddForm(false)}
-          onSubmit={handleAddPersonnel}
+          onClose={() => {
+            setShowAddForm(false);
+            setEditingPersonnel(null);
+          }}
+          onSubmit={editingPersonnel 
+            ? (data) => handleUpdatePersonnel(editingPersonnel.id, data)
+            : handleAddPersonnel
+          }
+          personnelToEdit={editingPersonnel}
         />
       )}
 
@@ -660,6 +760,31 @@ const PersonnelDashboard: React.FC = () => {
                   AI Risk: {(selectedPersonnel?.ai_risk_score as any)?.overall || 0}
                 </span>
               </div>
+            </div>
+            <div className="flex items-center space-x-3">
+              {hasPermission('personnel.update') && (
+                <button
+                  onClick={() => {
+                    handleEditPersonnel(selectedPersonnel);
+                    setSelectedPersonnel(null);
+                  }}
+                  className="flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  <Edit className="w-4 h-4" />
+                  <span>Edit</span>
+                </button>
+              )}
+              {hasPermission('personnel.delete') && (
+                <button
+                  onClick={() => {
+                    handleDeletePersonnel(selectedPersonnel?.id, selectedPersonnel?.name);
+                  }}
+                  className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
