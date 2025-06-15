@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plane, MapPin, Calendar, Clock, AlertTriangle, CheckCircle, XCircle, Users, Shield, Globe, Search, Filter, Download, Plus, Eye, Edit, FileText, Brain, Zap, TrendingUp, TrendingDown, Car, Building, Phone, Mail, Loader2, Save } from 'lucide-react';
+import { X, Plane, MapPin, Calendar, Clock, AlertTriangle, CheckCircle, XCircle, Users, Shield, Globe, Search, Filter, Download, Plus, Eye, Edit, FileText, Brain, Zap, TrendingUp, TrendingDown, Car, Building, Phone, Mail, Loader2, Save, User } from 'lucide-react';
 import { Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { TimelineBlock } from '../types/timeline';
