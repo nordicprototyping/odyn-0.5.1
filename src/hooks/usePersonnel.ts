@@ -17,9 +17,10 @@ export function usePersonnel() {
       setLoading(true);
       setError(null);
       
+      // Include work_asset_id and date_of_birth in the select
       const { data, error: fetchError } = await supabase
         .from('personnel_details')
-        .select('*')
+        .select('*, assets(name, type, location)')
         .order('created_at', { ascending: false });
 
       if (fetchError) {

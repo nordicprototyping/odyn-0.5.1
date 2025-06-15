@@ -293,17 +293,43 @@ async function scorePersonnelRisk(personnelData: any, organizationId: string, us
     }
   `;
   
+  // Extract work location context if available
+  const workLocationContext = personnelData.work_location_context 
+    ? `Work Location: ${personnelData.work_location_context.name} (${personnelData.work_location_context.type})
+    Work Location Status: ${personnelData.work_location_context.status}
+    Work Location Risk Score: ${personnelData.work_location_context.risk_score}`
+    : 'Work Location: Not assigned to a specific asset';
+  
+  // Format date of birth if available
+  const dobInfo = personnelData.date_of_birth 
+    ? `Date of Birth: ${personnelData.date_of_birth}`
+    : 'Date of Birth: Not provided';
+  
+  // Format emergency contact address if available
+  const emergencyContactAddress = personnelData.emergency_contact.address
+    ? `Emergency Contact Address: ${personnelData.emergency_contact.address}, ${personnelData.emergency_contact.city || ''}, ${personnelData.emergency_contact.country || ''}`
+    : 'Emergency Contact Address: Not provided';
+  
   const prompt = `
     Please analyze the following personnel data and provide a comprehensive risk assessment in JSON format:
     
     Name: ${personnelData.name}
     Employee ID: ${personnelData.employee_id}
+    ${dobInfo}
     Category: ${personnelData.category}
     Department: ${personnelData.department}
-    Current Location: ${personnelData.current_location.city}, ${personnelData.current_location.country}
-    Work Location: ${personnelData.work_location}
+    
+    Home Address: ${personnelData.current_location.address || ''}, ${personnelData.current_location.city}, ${personnelData.current_location.country}
+    ${workLocationContext}
+    
     Clearance Level: ${personnelData.clearance_level}
     Status: ${personnelData.status}
+    
+    Emergency Contact:
+    - Name: ${personnelData.emergency_contact.name}
+    - Relationship: ${personnelData.emergency_contact.relationship}
+    - Phone: ${personnelData.emergency_contact.phone}
+    - ${emergencyContactAddress}
     
     Travel Status:
     - Current: ${personnelData.travel_status.current}
@@ -315,6 +341,8 @@ async function scorePersonnelRisk(personnelData: any, organizationId: string, us
     3. Travel status and associated risks
     4. Role and responsibilities
     5. Department-specific risk factors
+    6. Age and experience level
+    7. Work location security status
     
     Provide a detailed risk assessment with specific recommendations for risk mitigation.
     

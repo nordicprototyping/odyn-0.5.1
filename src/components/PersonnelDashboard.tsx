@@ -30,7 +30,8 @@ import {
   Zap,
   Plus,
   Upload,
-  Loader2
+  Loader2,
+  Cake
 } from 'lucide-react';
 import GoogleMapComponent from './common/GoogleMapComponent';
 import AddPersonnelForm from './AddPersonnelForm';
@@ -40,6 +41,7 @@ import MitigationDisplay from './MitigationDisplay';
 import { AppliedMitigation } from '../types/mitigation';
 import { usePersonnel } from '../hooks/usePersonnel';
 import Modal from './common/Modal';
+import { supabase } from '../lib/supabase';
 
 const PersonnelDashboard: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -48,6 +50,7 @@ const PersonnelDashboard: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'map'>('list');
   const [riskFilter, setRiskFilter] = useState<string>('all');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [workAssets, setWorkAssets] = useState<{[key: string]: string}>({});
 
   const { hasPermission } = useAuth();
   const { 
@@ -60,6 +63,36 @@ const PersonnelDashboard: React.FC = () => {
 
   // Add console log to track rendering and state
   console.log('PersonnelDashboard rendering, showAddForm:', showAddForm);
+
+  // Fetch asset names for work_asset_ids
+  React.useEffect(() => {
+    const fetchAssetNames = async () => {
+      const assetIds = personnelData
+        .map(person => person.work_asset_id)
+        .filter(Boolean) as string[];
+      
+      if (assetIds.length === 0) return;
+      
+      try {
+        const { data } = await supabase
+          .from('assets')
+          .select('id, name')
+          .in('id', assetIds);
+        
+        if (data) {
+          const assetMap: {[key: string]: string} = {};
+          data.forEach(asset => {
+            assetMap[asset.id] = asset.name;
+          });
+          setWorkAssets(assetMap);
+        }
+      } catch (error) {
+        console.error('Error fetching asset names:', error);
+      }
+    };
+    
+    fetchAssetNames();
+  }, [personnelData]);
 
   const handleAddPersonnel = async (personnelData: any) => {
     try {
@@ -142,6 +175,44 @@ const PersonnelDashboard: React.FC = () => {
     }
   };
 
+  // Format date of birth to a more readable format
+  const formatDateOfBirth = (dateString: string | null) => {
+    if (!dateString) return 'Not provided';
+    
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString();
+    } catch (error) {
+      return dateString;
+    }
+  };
+
+  // Calculate age from date of birth
+  const calculateAge = (dateString: string | null) => {
+    if (!dateString) return null;
+    
+    try {
+      const birthDate = new Date(dateString);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      
+      return age;
+    } catch (error) {
+      return null;
+    }
+  };
+
+  // Get work location display name
+  const getWorkLocationName = (workAssetId: string | null) => {
+    if (!workAssetId) return 'Not assigned';
+    return workAssets[workAssetId] || 'Unknown asset';
+  };
+
   // Convert personnel to map markers
   const mapMarkers = filteredPersonnel.map(person => ({
     id: person.id,
@@ -158,7 +229,7 @@ const PersonnelDashboard: React.FC = () => {
       department: person.department,
       lastUpdate: person.last_seen,
       clearance: person.clearance_level,
-      workLocation: person.work_location
+      workLocation: getWorkLocationName(person.work_asset_id)
     }
   }));
 
@@ -380,6 +451,9 @@ const PersonnelDashboard: React.FC = () => {
                     Location
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Work Location
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Clearance
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -417,7 +491,13 @@ const PersonnelDashboard: React.FC = () => {
                         <MapPin className="w-4 h-4 mr-1 text-gray-400" />
                         {(person.current_location as any).city}, {(person.current_location as any).country}
                       </div>
-                      <div className="text-sm text-gray-500">{person.work_location}</div>
+                      <div className="text-sm text-gray-500">{(person.current_location as any).address || 'No address'}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center text-sm text-gray-900">
+                        <Building className="w-4 h-4 mr-1 text-gray-400" />
+                        {getWorkLocationName(person.work_asset_id)}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getClearanceColor(person.clearance_level)}`}>
@@ -501,6 +581,10 @@ const PersonnelDashboard: React.FC = () => {
                   {(person.current_location as any).city}, {(person.current_location as any).country}
                 </div>
                 <div className="flex items-center text-sm text-gray-600">
+                  <Building className="w-4 h-4 mr-2" />
+                  {getWorkLocationName(person.work_asset_id)}
+                </div>
+                <div className="flex items-center text-sm text-gray-600">
                   <Shield className="w-4 h-4 mr-2" />
                   {person.clearance_level}
                 </div>
@@ -508,6 +592,13 @@ const PersonnelDashboard: React.FC = () => {
                   {getStatusIcon(person.status)}
                   <span className="ml-2 capitalize">{person.status.replace('-', ' ')}</span>
                 </div>
+                {person.date_of_birth && (
+                  <div className="flex items-center text-sm text-gray-600">
+                    <Cake className="w-4 h-4 mr-2" />
+                    {formatDateOfBirth(person.date_of_birth)} 
+                    {calculateAge(person.date_of_birth) && ` (${calculateAge(person.date_of_birth)} years)`}
+                  </div>
+                )}
               </div>
               
               <div className="flex items-center justify-between mb-4">
@@ -608,12 +699,24 @@ const PersonnelDashboard: React.FC = () => {
                   <p className="text-gray-900 capitalize">{selectedPersonnel?.category.replace('-', ' ')}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Current Location</label>
-                  <p className="text-gray-900">{(selectedPersonnel?.current_location as any)?.city}, {(selectedPersonnel?.current_location as any)?.country}</p>
+                  <label className="text-sm font-medium text-gray-500">Date of Birth</label>
+                  <p className="text-gray-900">
+                    {formatDateOfBirth(selectedPersonnel?.date_of_birth)}
+                    {calculateAge(selectedPersonnel?.date_of_birth) && ` (${calculateAge(selectedPersonnel?.date_of_birth)} years)`}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Home Address</label>
+                  <p className="text-gray-900">
+                    {(selectedPersonnel?.current_location as any)?.address && (
+                      <>{(selectedPersonnel?.current_location as any)?.address}, </>
+                    )}
+                    {(selectedPersonnel?.current_location as any)?.city}, {(selectedPersonnel?.current_location as any)?.country}
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Work Location</label>
-                  <p className="text-gray-900">{selectedPersonnel?.work_location}</p>
+                  <p className="text-gray-900">{getWorkLocationName(selectedPersonnel?.work_asset_id)}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Security Clearance</label>
@@ -641,6 +744,18 @@ const PersonnelDashboard: React.FC = () => {
                     <Phone className="w-4 h-4 text-gray-400" />
                     <p className="text-gray-900">{(selectedPersonnel?.emergency_contact as any)?.phone}</p>
                   </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Address</label>
+                  <p className="text-gray-900">
+                    {(selectedPersonnel?.emergency_contact as any)?.address && (
+                      <>{(selectedPersonnel?.emergency_contact as any)?.address}, </>
+                    )}
+                    {(selectedPersonnel?.emergency_contact as any)?.city && (
+                      <>{(selectedPersonnel?.emergency_contact as any)?.city}, </>
+                    )}
+                    {(selectedPersonnel?.emergency_contact as any)?.country || 'No address provided'}
+                  </p>
                 </div>
               </div>
             </div>

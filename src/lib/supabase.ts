@@ -300,6 +300,8 @@ export interface Database {
           department: string;
           current_location: Record<string, any>;
           work_location: string;
+          work_asset_id: string | null;
+          date_of_birth: string | null;
           clearance_level: string;
           emergency_contact: Record<string, any>;
           travel_status: Record<string, any>;
@@ -318,7 +320,9 @@ export interface Database {
           category?: string;
           department: string;
           current_location?: Record<string, any>;
-          work_location: string;
+          work_location?: string;
+          work_asset_id?: string | null;
+          date_of_birth?: string | null;
           clearance_level?: string;
           emergency_contact?: Record<string, any>;
           travel_status?: Record<string, any>;
@@ -338,6 +342,8 @@ export interface Database {
           department?: string;
           current_location?: Record<string, any>;
           work_location?: string;
+          work_asset_id?: string | null;
+          date_of_birth?: string | null;
           clearance_level?: string;
           emergency_contact?: Record<string, any>;
           travel_status?: Record<string, any>;

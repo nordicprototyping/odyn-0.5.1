@@ -1,14 +1,19 @@
-import React, { useState } from 'react';
-import { X, User, MapPin, Shield, Phone, Briefcase, AlertTriangle, Save, Loader2, Brain } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, User, MapPin, Shield, Phone, Briefcase, AlertTriangle, Save, Loader2, Brain, Calendar, Building } from 'lucide-react';
+import { Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
-import { aiService } from '../services/aiService';
 import MitigationSelector from './MitigationSelector';
 import { AppliedMitigation } from '../types/mitigation';
+import { aiService } from '../services/aiService';
+import { supabase } from '../lib/supabase';
 import { useFormState } from '../hooks/useFormState';
 import { countries } from '../utils/constants';
 import { useDepartments } from '../hooks/useDepartments';
 import LocationSearchInput from './common/LocationSearchInput';
 import { LocationData } from '../services/nominatimService';
+
+type PersonnelInsert = Database['public']['Tables']['personnel_details']['Insert'];
+type Asset = Database['public']['Tables']['assets']['Row'];
 
 interface AddPersonnelFormProps {
   onClose: () => void;
@@ -22,23 +27,31 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
   const { profile } = useAuth();
   const [mitigations, setMitigations] = useState<AppliedMitigation[]>([]);
   const { departments } = useDepartments();
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [loadingAssets, setLoadingAssets] = useState(false);
   
   const { formData, updateFormData } = useFormState({
     name: '',
     employee_id: '',
+    date_of_birth: '',
     category: 'full-time',
     department: '',
     current_location: {
+      address: '',
       city: '',
       country: '',
       coordinates: [0, 0] as [number, number]
     },
-    work_location: '',
+    work_asset_id: '',
     clearance_level: 'Unclassified',
     emergency_contact: {
       name: '',
       phone: '',
-      relationship: ''
+      relationship: '',
+      address: '',
+      city: '',
+      country: '',
+      coordinates: [0, 0] as [number, number]
     },
     travel_status: {
       current: '',
@@ -66,6 +79,33 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
     last_seen: 'Just now'
   });
 
+  // Fetch assets when component mounts
+  useEffect(() => {
+    fetchAssets();
+  }, []);
+
+  const fetchAssets = async () => {
+    try {
+      setLoadingAssets(true);
+      
+      const { data, error } = await supabase
+        .from('assets')
+        .select('id, name, type, location')
+        .order('name');
+      
+      if (error) {
+        throw error;
+      }
+      
+      setAssets(data || []);
+    } catch (err) {
+      console.error('Error fetching assets:', err);
+      setError('Failed to load assets data');
+    } finally {
+      setLoadingAssets(false);
+    }
+  };
+
   const handleLocationChange = (location: LocationData | null) => {
     if (location) {
       updateFormData('current_location', {
@@ -74,6 +114,15 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
         country: location.country,
         coordinates: location.coordinates
       });
+    }
+  };
+
+  const handleEmergencyContactLocationChange = (location: LocationData | null) => {
+    if (location) {
+      updateFormData('emergency_contact.address', location.address);
+      updateFormData('emergency_contact.city', location.city);
+      updateFormData('emergency_contact.country', location.country);
+      updateFormData('emergency_contact.coordinates', location.coordinates);
     }
   };
 
@@ -88,7 +137,7 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
         throw new Error('Please fill in all required fields');
       }
 
-      // Set current location as work location if not specified
+      // Set current location as travel status current if not specified
       if (!formData.travel_status.current) {
         formData.travel_status.current = formData.current_location.city;
       }
@@ -230,6 +279,18 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Date of Birth
+                </label>
+                <input
+                  type="date"
+                  value={formData.date_of_birth}
+                  onChange={(e) => updateFormData('date_of_birth', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Category *
                 </label>
                 <select
@@ -276,30 +337,39 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
             <div className="space-y-4">
               <LocationSearchInput
                 value={formData.current_location.city ? {
-                  address: '',
+                  address: formData.current_location.address,
                   city: formData.current_location.city,
                   country: formData.current_location.country,
                   coordinates: formData.current_location.coordinates
                 } : null}
                 onChange={handleLocationChange}
-                placeholder="Search for current location..."
+                placeholder="Search for home address..."
                 required={true}
-                label="Current Location *"
+                label="Home Address *"
                 showCoordinates={true}
               />
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Work Location *
+                  Work Location (Asset) *
                 </label>
-                <input
-                  type="text"
+                <select
                   required
-                  value={formData.work_location}
-                  onChange={(e) => updateFormData('work_location', e.target.value)}
+                  value={formData.work_asset_id}
+                  onChange={(e) => updateFormData('work_asset_id', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., Singapore HQ, Remote, Embassy Ankara"
-                />
+                >
+                  <option value="">Select Work Location</option>
+                  {loadingAssets ? (
+                    <option disabled>Loading assets...</option>
+                  ) : (
+                    assets.map(asset => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.name} ({asset.type}) - {(asset.location as any).city}, {(asset.location as any).country}
+                      </option>
+                    ))
+                  )}
+                </select>
               </div>
             </div>
           </div>
@@ -354,7 +424,7 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
               <Phone className="w-5 h-5 text-orange-500" />
               <span>Emergency Contact</span>
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Contact Name *
@@ -402,6 +472,21 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
                   <option value="Other">Other</option>
                 </select>
               </div>
+            </div>
+
+            <div className="mt-4">
+              <LocationSearchInput
+                value={formData.emergency_contact.address ? {
+                  address: formData.emergency_contact.address,
+                  city: formData.emergency_contact.city,
+                  country: formData.emergency_contact.country,
+                  coordinates: formData.emergency_contact.coordinates
+                } : null}
+                onChange={handleEmergencyContactLocationChange}
+                placeholder="Search for emergency contact address..."
+                label="Emergency Contact Address"
+                showCoordinates={false}
+              />
             </div>
           </div>
 

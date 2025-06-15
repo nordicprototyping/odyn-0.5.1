@@ -196,6 +196,20 @@ class AIService {
         throw new Error('No access token available');
       }
       
+      // Update the prompt for personnel risk scoring to include new fields
+      if (request.type === 'personnel') {
+        // Enhance the data with additional context for the AI
+        const enhancedData = {
+          ...request.data,
+          // Add context about work location if work_asset_id is provided
+          work_location_context: request.data.work_asset_id 
+            ? await this.getAssetContext(request.data.work_asset_id)
+            : null
+        };
+        
+        request.data = enhancedData;
+      }
+      
       const response = await fetch(`${this.apiUrl}/risk-scoring`, {
         method: 'POST',
         headers: {
@@ -221,6 +235,32 @@ class AIService {
         explanation: 'Unable to perform AI risk assessment. Using default risk score.',
         trend: 'stable'
       };
+    }
+  }
+
+  /**
+   * Get context information about an asset for AI risk scoring
+   */
+  private async getAssetContext(assetId: string): Promise<any> {
+    try {
+      const { data, error } = await supabase
+        .from('assets')
+        .select('name, type, location, status, ai_risk_score')
+        .eq('id', assetId)
+        .single();
+      
+      if (error) throw error;
+      
+      return {
+        name: data.name,
+        type: data.type,
+        location: data.location,
+        status: data.status,
+        risk_score: (data.ai_risk_score as any)?.overall || 0
+      };
+    } catch (error) {
+      console.error('Error getting asset context:', error);
+      return null;
     }
   }
 }
