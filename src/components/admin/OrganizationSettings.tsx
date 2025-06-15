@@ -11,7 +11,8 @@ import {
   CheckCircle, 
   X,
   Brain,
-  Zap
+  Zap,
+  Plus
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
