@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   AlertTriangle,
   Plus,
@@ -23,17 +23,14 @@ import {
   ChevronRight,
   Loader2
 } from 'lucide-react';
-import { supabase, Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import AddEditRiskForm from './AddEditRiskForm';
+import { useRisks } from '../hooks/useRisks';
+import Modal from './common/Modal';
 
-type Risk = Database['public']['Tables']['risks']['Row'];
-type RiskInsert = Database['public']['Tables']['risks']['Insert'];
+type Risk = any;
 
 const RiskManagement: React.FC = () => {
-  const [risks, setRisks] = useState<Risk[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -46,66 +43,20 @@ const RiskManagement: React.FC = () => {
   const [editingRisk, setEditingRisk] = useState<Risk | null>(null);
 
   const { user, profile, hasPermission } = useAuth();
+  const { 
+    risks, 
+    loading, 
+    error, 
+    fetchRisks, 
+    addRisk, 
+    updateRisk, 
+    deleteRisk, 
+    logAuditEvent 
+  } = useRisks();
 
-  useEffect(() => {
-    fetchRisks();
-  }, []);
-
-  const fetchRisks = async () => {
+  const handleCreateRisk = async (formData: any) => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      const { data, error: fetchError } = await supabase
-        .from('risks')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      setRisks(data || []);
-    } catch (err) {
-      console.error('Error fetching risks:', err);
-      setError('Failed to load risk data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
-    if (!profile?.organization_id) {
-      console.warn('Cannot log audit event: no organization ID available');
-      return;
-    }
-    
-    try {
-      const { error } = await supabase.from('audit_logs').insert({
-        user_id: user?.id || null,
-        organization_id: profile.organization_id,
-        action,
-        resource_type: 'risk',
-        resource_id: resourceId,
-        details,
-        ip_address: null, // We'll skip IP detection for now
-        user_agent: navigator.userAgent
-      });
-
-      if (error) {
-        console.error('Error logging audit event:', error);
-      }
-    } catch (error) {
-      console.error('Unexpected error logging audit event:', error);
-    }
-  };
-
-  const handleCreateRisk = async (formData: RiskInsert) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const riskData: RiskInsert = {
+      const riskData = {
         ...formData,
         organization_id: profile?.organization_id || '',
         identified_by_user_id: user?.id || null,
@@ -113,78 +64,52 @@ const RiskManagement: React.FC = () => {
         department: formData.department || profile?.department || null
       };
 
-      const { data, error } = await supabase
-        .from('risks')
-        .insert([riskData])
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
+      const newRisk = await addRisk(riskData);
 
       // Log the creation in audit logs
-      if (data) {
-        await logAuditEvent('risk_created', data.id, { 
-          risk_title: data.title,
-          risk_category: data.category,
-          risk_score: data.risk_score
+      if (newRisk) {
+        await logAuditEvent('risk_created', newRisk.id, { 
+          risk_title: newRisk.title,
+          risk_category: newRisk.category,
+          risk_score: newRisk.risk_score
         });
       }
 
-      await fetchRisks();
       setShowAddForm(false);
     } catch (err) {
       console.error('Error adding risk:', err);
       throw err;
-    } finally {
-      setLoading(false);
     }
   };
 
-  const handleUpdateRisk = async (formData: RiskInsert) => {
+  const handleUpdateRisk = async (formData: any) => {
     if (!editingRisk) return;
 
     try {
-      setLoading(true);
-      setError(null);
-
       const updateData = {
         ...formData,
         organization_id: profile?.organization_id,
         last_reviewed_at: new Date().toISOString()
       };
 
-      const { data, error } = await supabase
-        .from('risks')
-        .update(updateData)
-        .eq('id', editingRisk.id)
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
+      const updatedRisk = await updateRisk(editingRisk.id, updateData);
 
       // Log the update in audit logs
-      if (data) {
-        await logAuditEvent('risk_updated', data.id, { 
-          risk_title: data.title,
-          risk_category: data.category,
-          risk_score: data.risk_score,
+      if (updatedRisk) {
+        await logAuditEvent('risk_updated', updatedRisk.id, { 
+          risk_title: updatedRisk.title,
+          risk_category: updatedRisk.category,
+          risk_score: updatedRisk.risk_score,
           previous_status: editingRisk.status,
-          new_status: data.status
+          new_status: updatedRisk.status
         });
       }
 
-      await fetchRisks();
       setShowEditForm(false);
       setEditingRisk(null);
     } catch (err) {
       console.error('Error updating risk:', err);
       throw err;
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -194,30 +119,16 @@ const RiskManagement: React.FC = () => {
     }
 
     try {
-      setLoading(true);
-      setError(null);
-      
       // Get risk details before deletion for audit log
-      const { data: riskData } = await supabase
-        .from('risks')
-        .select('title, category, risk_score, status')
-        .eq('id', riskId)
-        .single();
+      const riskToDelete = risks.find(r => r.id === riskId);
       
       // Delete the risk
-      const { error } = await supabase
-        .from('risks')
-        .delete()
-        .eq('id', riskId);
-
-      if (error) {
-        throw error;
-      }
+      await deleteRisk(riskId);
 
       // Log the deletion in audit logs
       await logAuditEvent('risk_deleted', riskId, { 
         risk_title: riskTitle,
-        risk_details: riskData || {},
+        risk_details: riskToDelete || {},
         deleted_at: new Date().toISOString()
       });
 
@@ -225,13 +136,8 @@ const RiskManagement: React.FC = () => {
       if (selectedRisk?.id === riskId) {
         setSelectedRisk(null);
       }
-      
-      await fetchRisks();
     } catch (err) {
       console.error('Error deleting risk:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete risk');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -664,109 +570,103 @@ const RiskManagement: React.FC = () => {
       )}
 
       {/* Risk Detail Modal */}
-      {selectedRisk && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 bg-red-600 rounded-lg flex items-center justify-center">
-                    <AlertTriangle className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900">{selectedRisk.title}</h2>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getRiskLevelColor(selectedRisk.risk_score)}`}>
-                        Risk Score: {selectedRisk.risk_score}
-                      </span>
-                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-700 capitalize">
-                        {selectedRisk.category}
-                      </span>
-                    </div>
+      <Modal
+        isOpen={!!selectedRisk}
+        onClose={() => setSelectedRisk(null)}
+        size="xl"
+      >
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-16 h-16 bg-red-600 rounded-lg flex items-center justify-center">
+                <AlertTriangle className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">{selectedRisk?.title}</h2>
+                <div className="flex items-center space-x-2 mt-1">
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getRiskLevelColor(selectedRisk?.risk_score)}`}>
+                    Risk Score: {selectedRisk?.risk_score}
+                  </span>
+                  <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-700 capitalize">
+                    {selectedRisk?.category}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              {hasPermission('risks.delete') && (
+                <button
+                  onClick={() => {
+                    handleDeleteRisk(selectedRisk?.id, selectedRisk?.title);
+                    setSelectedRisk(null);
+                  }}
+                  className="p-2 text-red-600 hover:text-red-800 transition-colors"
+                  title="Delete risk"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <div className="p-6 space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Description</h3>
+            <p className="text-gray-700">{selectedRisk?.description}</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Risk Details</h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500">Status</span>
+                  <div className="flex items-center">
+                    {getStatusIcon(selectedRisk?.status)}
+                    <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedRisk?.status)}`}>
+                      {selectedRisk?.status.charAt(0).toUpperCase() + selectedRisk?.status.slice(1)}
+                    </span>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  {hasPermission('risks.delete') && (
-                    <button
-                      onClick={() => {
-                        handleDeleteRisk(selectedRisk.id, selectedRisk.title);
-                        setSelectedRisk(null);
-                      }}
-                      className="p-2 text-red-600 hover:text-red-800 transition-colors"
-                      title="Delete risk"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setSelectedRisk(null)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500">Impact</span>
+                  <span className="text-sm text-gray-900 capitalize">{selectedRisk?.impact.replace('_', ' ')}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500">Likelihood</span>
+                  <span className="text-sm text-gray-900 capitalize">{selectedRisk?.likelihood.replace('_', ' ')}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500">Department</span>
+                  <span className="text-sm text-gray-900">{selectedRisk?.department || 'Not assigned'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500">Due Date</span>
+                  <span className="text-sm text-gray-900">
+                    {selectedRisk?.due_date ? new Date(selectedRisk?.due_date).toLocaleDateString() : 'No due date'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500">Last Reviewed</span>
+                  <span className="text-sm text-gray-900">
+                    {selectedRisk?.last_reviewed_at ? new Date(selectedRisk?.last_reviewed_at).toLocaleDateString() : 'Never'}
+                  </span>
                 </div>
               </div>
             </div>
             
-            <div className="p-6 space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">Description</h3>
-                <p className="text-gray-700">{selectedRisk.description}</p>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Risk Details</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-500">Status</span>
-                      <div className="flex items-center">
-                        {getStatusIcon(selectedRisk.status)}
-                        <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedRisk.status)}`}>
-                          {selectedRisk.status.charAt(0).toUpperCase() + selectedRisk.status.slice(1)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-500">Impact</span>
-                      <span className="text-sm text-gray-900 capitalize">{selectedRisk.impact.replace('_', ' ')}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-500">Likelihood</span>
-                      <span className="text-sm text-gray-900 capitalize">{selectedRisk.likelihood.replace('_', ' ')}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-500">Department</span>
-                      <span className="text-sm text-gray-900">{selectedRisk.department || 'Not assigned'}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-500">Due Date</span>
-                      <span className="text-sm text-gray-900">
-                        {selectedRisk.due_date ? new Date(selectedRisk.due_date).toLocaleDateString() : 'No due date'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-500">Last Reviewed</span>
-                      <span className="text-sm text-gray-900">
-                        {selectedRisk.last_reviewed_at ? new Date(selectedRisk.last_reviewed_at).toLocaleDateString() : 'Never'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Mitigation Plan</h3>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-gray-700">
-                      {selectedRisk.mitigation_plan || 'No mitigation plan specified'}
-                    </p>
-                  </div>
-                </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Mitigation Plan</h3>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-gray-700">
+                  {selectedRisk?.mitigation_plan || 'No mitigation plan specified'}
+                </p>
               </div>
             </div>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 };

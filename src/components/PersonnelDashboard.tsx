@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Users,
   MapPin,
@@ -34,118 +34,36 @@ import {
 } from 'lucide-react';
 import GoogleMapComponent from './common/GoogleMapComponent';
 import AddPersonnelForm from './AddPersonnelForm';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import AIRiskInsights from './AIRiskInsights';
 import MitigationDisplay from './MitigationDisplay';
 import { AppliedMitigation } from '../types/mitigation';
-
-interface Personnel {
-  id: string;
-  name: string;
-  employee_id: string;
-  category: 'full-time' | 'contractor' | 'temporary' | 'remote' | 'executive' | 'field';
-  department: string;
-  current_location: {
-    city: string;
-    country: string;
-    coordinates: [number, number];
-  };
-  work_location: string;
-  clearance_level: 'Unclassified' | 'Confidential' | 'Secret' | 'Top Secret';
-  emergency_contact: {
-    name: string;
-    phone: string;
-    relationship: string;
-  };
-  travel_status: {
-    current: string;
-    isActive: boolean;
-    destination?: string;
-    returnDate?: string;
-    authorization: 'approved' | 'pending' | 'denied';
-  };
-  ai_risk_score: {
-    overall: number;
-    components: {
-      behavioralRisk: number;
-      travelRisk: number;
-      accessRisk: number;
-      complianceRisk: number;
-      geographicRisk: number;
-    };
-    trend: 'improving' | 'stable' | 'deteriorating';
-    lastUpdated: string;
-    confidence: number;
-    predictions: {
-      nextWeek: number;
-      nextMonth: number;
-    };
-    explanation?: string;
-    recommendations?: string[];
-  };
-  status: 'active' | 'on-mission' | 'in-transit' | 'off-duty' | 'unavailable';
-  last_seen: string;
-  created_at: string;
-  updated_at: string;
-  mitigations?: AppliedMitigation[];
-}
+import { usePersonnel } from '../hooks/usePersonnel';
+import Modal from './common/Modal';
 
 const PersonnelDashboard: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedPersonnel, setSelectedPersonnel] = useState<Personnel | null>(null);
+  const [selectedPersonnel, setSelectedPersonnel] = useState<any | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'map'>('list');
   const [riskFilter, setRiskFilter] = useState<string>('all');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [personnelData, setPersonnelData] = useState<Personnel[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const { hasPermission } = useAuth();
+  const { 
+    personnel: personnelData, 
+    loading, 
+    error, 
+    fetchPersonnel, 
+    addPersonnel 
+  } = usePersonnel();
 
   // Add console log to track rendering and state
   console.log('PersonnelDashboard rendering, showAddForm:', showAddForm);
 
-  useEffect(() => {
-    fetchPersonnel();
-  }, []);
-
-  const fetchPersonnel = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const { data, error: fetchError } = await supabase
-        .from('personnel_details')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      setPersonnelData(data || []);
-    } catch (err) {
-      console.error('Error fetching personnel:', err);
-      setError('Failed to load personnel data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleAddPersonnel = async (personnelData: any) => {
     try {
-      const { error } = await supabase
-        .from('personnel_details')
-        .insert([personnelData]);
-
-      if (error) {
-        throw error;
-      }
-
-      // Refresh the personnel list
-      await fetchPersonnel();
+      await addPersonnel(personnelData);
       setShowAddForm(false);
     } catch (err) {
       console.error('Error adding personnel:', err);
@@ -163,9 +81,9 @@ const PersonnelDashboard: React.FC = () => {
   };
 
   const riskStats = {
-    low: personnelData.filter(p => p.ai_risk_score.overall <= 30).length,
-    medium: personnelData.filter(p => p.ai_risk_score.overall > 30 && p.ai_risk_score.overall <= 70).length,
-    high: personnelData.filter(p => p.ai_risk_score.overall > 70).length,
+    low: personnelData.filter(p => (p.ai_risk_score as any).overall <= 30).length,
+    medium: personnelData.filter(p => (p.ai_risk_score as any).overall > 30 && (p.ai_risk_score as any).overall <= 70).length,
+    high: personnelData.filter(p => (p.ai_risk_score as any).overall > 70).length,
   };
 
   const filteredPersonnel = personnelData.filter(person => {
@@ -175,9 +93,9 @@ const PersonnelDashboard: React.FC = () => {
                          person.department.toLowerCase().includes(searchTerm.toLowerCase());
     
     let matchesRisk = true;
-    if (riskFilter === 'low') matchesRisk = person.ai_risk_score.overall <= 30;
-    else if (riskFilter === 'medium') matchesRisk = person.ai_risk_score.overall > 30 && person.ai_risk_score.overall <= 70;
-    else if (riskFilter === 'high') matchesRisk = person.ai_risk_score.overall > 70;
+    if (riskFilter === 'low') matchesRisk = (person.ai_risk_score as any).overall <= 30;
+    else if (riskFilter === 'medium') matchesRisk = (person.ai_risk_score as any).overall > 30 && (person.ai_risk_score as any).overall <= 70;
+    else if (riskFilter === 'high') matchesRisk = (person.ai_risk_score as any).overall > 70;
     
     return matchesCategory && matchesSearch && matchesRisk;
   });
@@ -228,13 +146,13 @@ const PersonnelDashboard: React.FC = () => {
   const mapMarkers = filteredPersonnel.map(person => ({
     id: person.id,
     position: {
-      lat: person.current_location.coordinates[1],
-      lng: person.current_location.coordinates[0]
+      lat: (person.current_location as any).coordinates[1],
+      lng: (person.current_location as any).coordinates[0]
     },
     title: person.name,
     type: 'personnel' as const,
     status: person.status,
-    riskScore: person.ai_risk_score.overall,
+    riskScore: (person.ai_risk_score as any).overall,
     details: {
       description: `${person.department} - ${person.category}`,
       department: person.department,
@@ -245,11 +163,11 @@ const PersonnelDashboard: React.FC = () => {
   }));
 
   // Calculate map center based on filtered personnel
-  const mapCenter = useMemo(() => {
+  const mapCenter = React.useMemo(() => {
     if (filteredPersonnel.length === 0) return { lat: 40.7128, lng: -74.0060 };
     
-    const avgLat = filteredPersonnel.reduce((sum, person) => sum + person.current_location.coordinates[1], 0) / filteredPersonnel.length;
-    const avgLng = filteredPersonnel.reduce((sum, person) => sum + person.current_location.coordinates[0], 0) / filteredPersonnel.length;
+    const avgLat = filteredPersonnel.reduce((sum, person) => sum + (person.current_location as any).coordinates[1], 0) / filteredPersonnel.length;
+    const avgLng = filteredPersonnel.reduce((sum, person) => sum + (person.current_location as any).coordinates[0], 0) / filteredPersonnel.length;
     
     return { lat: avgLat, lng: avgLng };
   }, [filteredPersonnel]);
@@ -364,7 +282,7 @@ const PersonnelDashboard: React.FC = () => {
             <Plane className="w-5 h-5 text-orange-500" />
           </div>
           <div className="text-3xl font-bold text-gray-900">
-            {personnelData.filter(p => p.travel_status.isActive).length}
+            {personnelData.filter(p => (p.travel_status as any).isActive).length}
           </div>
           <div className="text-sm text-orange-600 mt-2">Currently traveling</div>
         </div>
@@ -375,7 +293,7 @@ const PersonnelDashboard: React.FC = () => {
             <Brain className="w-5 h-5 text-purple-500" />
           </div>
           <div className="text-3xl font-bold text-gray-900">
-            {personnelData.length > 0 ? Math.round(personnelData.reduce((sum, p) => sum + p.ai_risk_score.overall, 0) / personnelData.length) : 0}
+            {personnelData.length > 0 ? Math.round(personnelData.reduce((sum, p) => sum + (p.ai_risk_score as any).overall, 0) / personnelData.length) : 0}
           </div>
           <div className="text-sm text-purple-600 mt-2">Lower is better</div>
         </div>
@@ -433,7 +351,7 @@ const PersonnelDashboard: React.FC = () => {
           <div className="mb-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Personnel Locations</h3>
             <p className="text-sm text-gray-600">
-              Interactive map showing {filteredPersonnel.length} personnel across {new Set(filteredPersonnel.map(p => p.current_location.country)).size} countries
+              Interactive map showing {filteredPersonnel.length} personnel across {new Set(filteredPersonnel.map(p => (p.current_location as any).country)).size} countries
             </p>
           </div>
           <GoogleMapComponent
@@ -497,7 +415,7 @@ const PersonnelDashboard: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center text-sm text-gray-900">
                         <MapPin className="w-4 h-4 mr-1 text-gray-400" />
-                        {person.current_location.city}, {person.current_location.country}
+                        {(person.current_location as any).city}, {(person.current_location as any).country}
                       </div>
                       <div className="text-sm text-gray-500">{person.work_location}</div>
                     </td>
@@ -510,16 +428,16 @@ const PersonnelDashboard: React.FC = () => {
                       <div className="flex items-center space-x-2">
                         <div className="flex items-center space-x-1">
                           <Brain className="w-4 h-4 text-purple-500" />
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getAIRiskColor(person.ai_risk_score.overall)}`}>
-                            {person.ai_risk_score.overall}
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getAIRiskColor((person.ai_risk_score as any).overall)}`}>
+                            {(person.ai_risk_score as any).overall}
                           </span>
                         </div>
                         <div className="flex items-center space-x-1">
-                          {getTrendIcon(person.ai_risk_score.trend)}
-                          <Zap className="w-3 h-3 text-purple-400" title={`Confidence: ${person.ai_risk_score.confidence}%`} />
+                          {getTrendIcon((person.ai_risk_score as any).trend)}
+                          <Zap className="w-3 h-3 text-purple-400" title={`Confidence: ${(person.ai_risk_score as any).confidence}%`} />
                         </div>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">{getAIRiskLevel(person.ai_risk_score.overall)}</div>
+                      <div className="text-xs text-gray-500 mt-1">{getAIRiskLevel((person.ai_risk_score as any).overall)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -531,7 +449,7 @@ const PersonnelDashboard: React.FC = () => {
                       <div className="text-xs text-gray-500">{person.last_seen}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {person.travel_status.isActive ? (
+                      {(person.travel_status as any).isActive ? (
                         <div className="flex items-center text-sm text-orange-600">
                           <Plane className="w-4 h-4 mr-1" />
                           Active
@@ -568,8 +486,8 @@ const PersonnelDashboard: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <Brain className="w-4 h-4 text-purple-500" />
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getAIRiskColor(person.ai_risk_score.overall)}`}>
-                    {person.ai_risk_score.overall}
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getAIRiskColor((person.ai_risk_score as any).overall)}`}>
+                    {(person.ai_risk_score as any).overall}
                   </span>
                 </div>
               </div>
@@ -580,7 +498,7 @@ const PersonnelDashboard: React.FC = () => {
               <div className="space-y-2 mb-4">
                 <div className="flex items-center text-sm text-gray-600">
                   <MapPin className="w-4 h-4 mr-2" />
-                  {person.current_location.city}, {person.current_location.country}
+                  {(person.current_location as any).city}, {(person.current_location as any).country}
                 </div>
                 <div className="flex items-center text-sm text-gray-600">
                   <Shield className="w-4 h-4 mr-2" />
@@ -596,14 +514,14 @@ const PersonnelDashboard: React.FC = () => {
                 <div className="flex items-center space-x-1">
                   <Brain className="w-3 h-3 text-purple-500" />
                   <span className="text-xs text-gray-600">AI Risk:</span>
-                  <span className={`text-xs font-medium ${person.ai_risk_score.overall <= 30 ? 'text-green-600' : person.ai_risk_score.overall <= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {getAIRiskLevel(person.ai_risk_score.overall)}
+                  <span className={`text-xs font-medium ${(person.ai_risk_score as any).overall <= 30 ? 'text-green-600' : (person.ai_risk_score as any).overall <= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
+                    {getAIRiskLevel((person.ai_risk_score as any).overall)}
                   </span>
                 </div>
                 <div className="flex items-center space-x-1">
-                  {getTrendIcon(person.ai_risk_score.trend)}
+                  {getTrendIcon((person.ai_risk_score as any).trend)}
                   <span className="text-xs text-gray-500">
-                    {person.ai_risk_score.confidence}%
+                    {(person.ai_risk_score as any).confidence}%
                   </span>
                 </div>
               </div>
@@ -628,140 +546,134 @@ const PersonnelDashboard: React.FC = () => {
       )}
 
       {/* Personnel Detail Modal */}
-      {selectedPersonnel && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center">
-                    <span className="text-white font-bold text-xl">
-                      {selectedPersonnel.name.split(' ').map(n => n[0]).join('')}
-                    </span>
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900">{selectedPersonnel.name}</h2>
-                    <p className="text-gray-600">{selectedPersonnel.employee_id} • {selectedPersonnel.department}</p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Brain className="w-5 h-5 text-purple-500" />
-                    <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full border ${getAIRiskColor(selectedPersonnel.ai_risk_score.overall)}`}>
-                      AI Risk: {selectedPersonnel.ai_risk_score.overall}
-                    </span>
-                  </div>
+      <Modal
+        isOpen={!!selectedPersonnel}
+        onClose={() => setSelectedPersonnel(null)}
+        size="full"
+      >
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center">
+                <span className="text-white font-bold text-xl">
+                  {selectedPersonnel?.name.split(' ').map((n: string) => n[0]).join('')}
+                </span>
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">{selectedPersonnel?.name}</h2>
+                <p className="text-gray-600">{selectedPersonnel?.employee_id} • {selectedPersonnel?.department}</p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Brain className="w-5 h-5 text-purple-500" />
+                <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full border ${getAIRiskColor((selectedPersonnel?.ai_risk_score as any)?.overall || 0)}`}>
+                  AI Risk: {(selectedPersonnel?.ai_risk_score as any)?.overall || 0}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div className="p-6 space-y-6">
+          {/* AI Risk Assessment */}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <Brain className="w-5 h-5 text-purple-500" />
+              <span>AI Risk Assessment</span>
+            </h3>
+            <AIRiskInsights
+              score={(selectedPersonnel?.ai_risk_score as any)?.overall || 0}
+              explanation={(selectedPersonnel?.ai_risk_score as any)?.explanation || "No AI analysis available for this personnel."}
+              recommendations={(selectedPersonnel?.ai_risk_score as any)?.recommendations || []}
+              confidence={(selectedPersonnel?.ai_risk_score as any)?.confidence || 75}
+              trend={(selectedPersonnel?.ai_risk_score as any)?.trend || 'stable'}
+              components={(selectedPersonnel?.ai_risk_score as any)?.components || {}}
+            />
+          </div>
+
+          {/* Applied Mitigations */}
+          {selectedPersonnel?.mitigations && (selectedPersonnel?.mitigations as AppliedMitigation[]).length > 0 && (
+            <MitigationDisplay 
+              mitigations={selectedPersonnel?.mitigations as AppliedMitigation[]}
+              showCategory={true}
+            />
+          )}
+
+          {/* Basic Information */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Category</label>
+                  <p className="text-gray-900 capitalize">{selectedPersonnel?.category.replace('-', ' ')}</p>
                 </div>
-                <button
-                  onClick={() => setSelectedPersonnel(null)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <XCircle className="w-6 h-6" />
-                </button>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Current Location</label>
+                  <p className="text-gray-900">{(selectedPersonnel?.current_location as any)?.city}, {(selectedPersonnel?.current_location as any)?.country}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Work Location</label>
+                  <p className="text-gray-900">{selectedPersonnel?.work_location}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Security Clearance</label>
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getClearanceColor(selectedPersonnel?.clearance_level)}`}>
+                    {selectedPersonnel?.clearance_level}
+                  </span>
+                </div>
               </div>
             </div>
             
-            <div className="p-6 space-y-6">
-              {/* AI Risk Assessment */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                  <Brain className="w-5 h-5 text-purple-500" />
-                  <span>AI Risk Assessment</span>
-                </h3>
-                <AIRiskInsights
-                  score={selectedPersonnel.ai_risk_score.overall}
-                  explanation={selectedPersonnel.ai_risk_score.explanation || "No AI analysis available for this personnel."}
-                  recommendations={selectedPersonnel.ai_risk_score.recommendations || []}
-                  confidence={selectedPersonnel.ai_risk_score.confidence}
-                  trend={selectedPersonnel.ai_risk_score.trend}
-                  components={selectedPersonnel.ai_risk_score.components}
-                />
-              </div>
-
-              {/* Applied Mitigations */}
-              {selectedPersonnel.mitigations && selectedPersonnel.mitigations.length > 0 && (
-                <MitigationDisplay 
-                  mitigations={selectedPersonnel.mitigations}
-                  showCategory={true}
-                />
-              )}
-
-              {/* Basic Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Emergency Contact</h3>
+              <div className="space-y-3">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Category</label>
-                      <p className="text-gray-900 capitalize">{selectedPersonnel.category.replace('-', ' ')}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Current Location</label>
-                      <p className="text-gray-900">{selectedPersonnel.current_location.city}, {selectedPersonnel.current_location.country}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Work Location</label>
-                      <p className="text-gray-900">{selectedPersonnel.work_location}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Security Clearance</label>
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getClearanceColor(selectedPersonnel.clearance_level)}`}>
-                        {selectedPersonnel.clearance_level}
-                      </span>
-                    </div>
-                  </div>
+                  <label className="text-sm font-medium text-gray-500">Name</label>
+                  <p className="text-gray-900">{(selectedPersonnel?.emergency_contact as any)?.name}</p>
                 </div>
-                
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Emergency Contact</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Name</label>
-                      <p className="text-gray-900">{selectedPersonnel.emergency_contact.name}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Relationship</label>
-                      <p className="text-gray-900">{selectedPersonnel.emergency_contact.relationship}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Phone</label>
-                      <div className="flex items-center space-x-2">
-                        <Phone className="w-4 h-4 text-gray-400" />
-                        <p className="text-gray-900">{selectedPersonnel.emergency_contact.phone}</p>
-                      </div>
-                    </div>
-                  </div>
+                  <label className="text-sm font-medium text-gray-500">Relationship</label>
+                  <p className="text-gray-900">{(selectedPersonnel?.emergency_contact as any)?.relationship}</p>
                 </div>
-              </div>
-              
-              {/* Travel Status */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Travel Status</h3>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Current Status</label>
-                      <p className="text-gray-900">{selectedPersonnel.travel_status.current}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Active Travel</label>
-                      <p className="text-gray-900">{selectedPersonnel.travel_status.isActive ? 'Yes' : 'No'}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Authorization</label>
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        selectedPersonnel.travel_status.authorization === 'approved' ? 'bg-green-100 text-green-700' :
-                        selectedPersonnel.travel_status.authorization === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
-                        {selectedPersonnel.travel_status.authorization}
-                      </span>
-                    </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Phone</label>
+                  <div className="flex items-center space-x-2">
+                    <Phone className="w-4 h-4 text-gray-400" />
+                    <p className="text-gray-900">{(selectedPersonnel?.emergency_contact as any)?.phone}</p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+          
+          {/* Travel Status */}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Travel Status</h3>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Current Status</label>
+                  <p className="text-gray-900">{(selectedPersonnel?.travel_status as any)?.current}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Active Travel</label>
+                  <p className="text-gray-900">{(selectedPersonnel?.travel_status as any)?.isActive ? 'Yes' : 'No'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Authorization</label>
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    (selectedPersonnel?.travel_status as any)?.authorization === 'approved' ? 'bg-green-100 text-green-700' :
+                    (selectedPersonnel?.travel_status as any)?.authorization === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {(selectedPersonnel?.travel_status as any)?.authorization}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 };

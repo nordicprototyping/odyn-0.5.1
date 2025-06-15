@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Plane,
   MapPin,
@@ -30,109 +30,50 @@ import {
 } from 'lucide-react';
 import GoogleMapComponent from './common/GoogleMapComponent';
 import AddTravelPlanForm from './AddTravelPlanForm';
-import { supabase, Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import AIRiskInsights from './AIRiskInsights';
 import MitigationDisplay from './MitigationDisplay';
 import { AppliedMitigation } from '../types/mitigation';
-
-type TravelPlan = Database['public']['Tables']['travel_plans']['Row'];
-type TravelPlanInsert = Database['public']['Tables']['travel_plans']['Insert'];
-type TravelPlanUpdate = Database['public']['Tables']['travel_plans']['Update'];
+import { useTravelPlans } from '../hooks/useTravelPlans';
+import Modal from './common/Modal';
 
 const TravelSecurityManagement: React.FC = () => {
-  const [selectedRequest, setSelectedRequest] = useState<TravelPlan | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterRisk, setFilterRisk] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [showNewPlanForm, setShowNewPlanForm] = useState(false);
-  const [travelPlans, setTravelPlans] = useState<TravelPlan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [editingTravelPlan, setEditingTravelPlan] = useState<TravelPlan | null>(null);
+  const [editingTravelPlan, setEditingTravelPlan] = useState<any | null>(null);
 
-  const { hasPermission, user, profile } = useAuth();
+  const { hasPermission } = useAuth();
+  const { 
+    travelPlans, 
+    loading, 
+    error, 
+    fetchTravelPlans, 
+    addTravelPlan, 
+    updateTravelPlan, 
+    deleteTravelPlan, 
+    logAuditEvent 
+  } = useTravelPlans();
 
   // Add console log to track rendering and state
   console.log('TravelSecurityManagement rendering, showNewPlanForm:', showNewPlanForm);
 
-  useEffect(() => {
-    fetchTravelPlans();
-  }, []);
-
-  const fetchTravelPlans = async () => {
+  const handleAddTravelPlan = async (planData: any) => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      const { data, error: fetchError } = await supabase
-        .from('travel_plans')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      setTravelPlans(data || []);
-    } catch (err) {
-      console.error('Error fetching travel plans:', err);
-      setError('Failed to load travel plan data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
-    if (!profile?.organization_id) {
-      console.warn('Cannot log audit event: no organization ID available');
-      return;
-    }
-    
-    try {
-      const { error } = await supabase.from('audit_logs').insert({
-        user_id: user?.id || null,
-        organization_id: profile.organization_id,
-        action,
-        resource_type: 'travel_plan',
-        resource_id: resourceId,
-        details,
-        ip_address: null, // We'll skip IP detection for now
-        user_agent: navigator.userAgent
-      });
-
-      if (error) {
-        console.error('Error logging audit event:', error);
-      }
-    } catch (error) {
-      console.error('Unexpected error logging audit event:', error);
-    }
-  };
-
-  const handleAddTravelPlan = async (planData: TravelPlanInsert) => {
-    try {
-      const { data, error } = await supabase
-        .from('travel_plans')
-        .insert([planData])
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
+      const newPlan = await addTravelPlan(planData);
 
       // Log the creation in audit logs
-      if (data) {
-        await logAuditEvent('travel_plan_created', data.id, { 
+      if (newPlan) {
+        await logAuditEvent('travel_plan_created', newPlan.id, { 
           traveler_name: planData.traveler_name,
           destination: planData.destination,
           departure_date: planData.departure_date
         });
       }
 
-      // Refresh the travel plans list
-      await fetchTravelPlans();
       setShowNewPlanForm(false);
       setEditingTravelPlan(null);
     } catch (err) {
@@ -141,18 +82,11 @@ const TravelSecurityManagement: React.FC = () => {
     }
   };
 
-  const handleUpdateTravelPlan = async (planData: TravelPlanUpdate) => {
+  const handleUpdateTravelPlan = async (planData: any) => {
     if (!editingTravelPlan) return;
     
     try {
-      const { error } = await supabase
-        .from('travel_plans')
-        .update(planData)
-        .eq('id', editingTravelPlan.id);
-
-      if (error) {
-        throw error;
-      }
+      const updatedPlan = await updateTravelPlan(editingTravelPlan.id, planData);
 
       // Log the update in audit logs
       await logAuditEvent('travel_plan_updated', editingTravelPlan.id, { 
@@ -161,21 +95,14 @@ const TravelSecurityManagement: React.FC = () => {
         departure_date: planData.departure_date
       });
 
-      // Refresh the travel plans list
-      await fetchTravelPlans();
       setShowNewPlanForm(false);
       setEditingTravelPlan(null);
       
       // If the updated plan was selected, refresh the selected plan
       if (selectedRequest && selectedRequest.id === editingTravelPlan.id) {
-        const { data } = await supabase
-          .from('travel_plans')
-          .select('*')
-          .eq('id', editingTravelPlan.id)
-          .single();
-          
-        if (data) {
-          setSelectedRequest(data);
+        const updatedRequest = travelPlans.find(plan => plan.id === editingTravelPlan.id);
+        if (updatedRequest) {
+          setSelectedRequest(updatedRequest);
         }
       }
     } catch (err) {
@@ -193,17 +120,8 @@ const TravelSecurityManagement: React.FC = () => {
     }
     
     try {
-      setLoading(true);
-      
       // Delete the travel plan from the database
-      const { error } = await supabase
-        .from('travel_plans')
-        .delete()
-        .eq('id', planId);
-
-      if (error) {
-        throw error;
-      }
+      await deleteTravelPlan(planId);
 
       // Log the deletion in audit logs
       await logAuditEvent('travel_plan_deleted', planId, { 
@@ -214,19 +132,12 @@ const TravelSecurityManagement: React.FC = () => {
       if (selectedRequest?.id === planId) {
         setSelectedRequest(null);
       }
-      
-      // Refresh the travel plans list
-      await fetchTravelPlans();
-      
     } catch (err) {
       console.error('Error deleting travel plan:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete travel plan');
-    } finally {
-      setLoading(false);
     }
   };
 
-  const handleEditTravelPlan = (travelPlan: TravelPlan) => {
+  const handleEditTravelPlan = (travelPlan: any) => {
     setEditingTravelPlan(travelPlan);
     setShowNewPlanForm(true);
   };
@@ -313,7 +224,7 @@ const TravelSecurityManagement: React.FC = () => {
   }));
 
   // Calculate map center based on filtered requests
-  const mapCenter = useMemo(() => {
+  const mapCenter = React.useMemo(() => {
     if (filteredRequests.length === 0) return { lat: 40.7128, lng: -74.0060 };
     
     const validRequests = filteredRequests.filter(request => 
@@ -574,7 +485,7 @@ const TravelSecurityManagement: React.FC = () => {
                         <div className="flex items-center">
                           <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
                             <span className="text-white font-semibold text-sm">
-                              {request.traveler_name.split(' ').map(n => n[0]).join('')}
+                              {request.traveler_name.split(' ').map((n: string) => n[0]).join('')}
                             </span>
                           </div>
                           <div className="ml-4">
@@ -679,249 +590,243 @@ const TravelSecurityManagement: React.FC = () => {
       )}
 
       {/* Travel Plan Detail Modal */}
-      {selectedRequest && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center">
-                    <Plane className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900">{selectedRequest.traveler_name}</h2>
-                    <p className="text-gray-600">{selectedRequest.id.slice(0, 8)} • {(selectedRequest.destination as any)?.city}, {(selectedRequest.destination as any)?.country}</p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Brain className="w-5 h-5 text-purple-500" />
-                    <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full border ${getRiskColor((selectedRequest.risk_assessment as any)?.overall || 0)}`}>
-                      AI Risk: {(selectedRequest.risk_assessment as any)?.overall || 0}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {hasPermission('travel.update') && (
-                    <button
-                      onClick={() => {
-                        handleEditTravelPlan(selectedRequest);
-                        setSelectedRequest(null);
-                      }}
-                      className="p-2 text-blue-600 hover:text-blue-800 transition-colors"
-                      title="Edit travel plan"
-                    >
-                      <Edit className="w-5 h-5" />
-                    </button>
-                  )}
-                  {hasPermission('travel.delete') && (
-                    <button
-                      onClick={() => {
-                        handleDeleteTravelPlan(selectedRequest.id, selectedRequest.traveler_name);
-                      }}
-                      className="p-2 text-red-600 hover:text-red-800 transition-colors"
-                      title="Delete travel plan"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setSelectedRequest(null)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <XCircle className="w-6 h-6" />
-                  </button>
-                </div>
+      <Modal
+        isOpen={!!selectedRequest}
+        onClose={() => setSelectedRequest(null)}
+        size="full"
+      >
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center">
+                <Plane className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">{selectedRequest?.traveler_name}</h2>
+                <p className="text-gray-600">{selectedRequest?.id.slice(0, 8)} • {(selectedRequest?.destination as any)?.city}, {(selectedRequest?.destination as any)?.country}</p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Brain className="w-5 h-5 text-purple-500" />
+                <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full border ${getRiskColor((selectedRequest?.risk_assessment as any)?.overall || 0)}`}>
+                  AI Risk: {(selectedRequest?.risk_assessment as any)?.overall || 0}
+                </span>
               </div>
             </div>
-            
-            <div className="p-6 space-y-6">
-              {/* AI Risk Assessment */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                  <Brain className="w-5 h-5 text-purple-500" />
-                  <span>AI Risk Assessment</span>
-                </h3>
-                <AIRiskInsights
-                  score={(selectedRequest.risk_assessment as any)?.overall || 0}
-                  explanation={(selectedRequest.risk_assessment as any)?.explanation || "No AI analysis available for this travel plan."}
-                  recommendations={(selectedRequest.risk_assessment as any)?.recommendations || []}
-                  confidence={(selectedRequest.risk_assessment as any)?.aiConfidence || 75}
-                  trend={(selectedRequest.risk_assessment as any)?.trend || 'stable'}
-                  components={(selectedRequest.risk_assessment as any)?.components || {}}
-                />
-              </div>
-
-              {/* Applied Mitigations */}
-              {selectedRequest.mitigations && (selectedRequest.mitigations as AppliedMitigation[]).length > 0 && (
-                <MitigationDisplay 
-                  mitigations={selectedRequest.mitigations as AppliedMitigation[]}
-                  showCategory={true}
-                />
+            <div className="flex items-center space-x-2">
+              {hasPermission('travel.update') && (
+                <button
+                  onClick={() => {
+                    handleEditTravelPlan(selectedRequest);
+                    setSelectedRequest(null);
+                  }}
+                  className="p-2 text-blue-600 hover:text-blue-800 transition-colors"
+                  title="Edit travel plan"
+                >
+                  <Edit className="w-5 h-5" />
+                </button>
               )}
-
-              {/* Travel Details */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Travel Details</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Purpose</label>
-                      <p className="text-gray-900">{selectedRequest.purpose}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Departure</label>
-                      <p className="text-gray-900">{new Date(selectedRequest.departure_date).toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Return</label>
-                      <p className="text-gray-900">{new Date(selectedRequest.return_date).toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Duration</label>
-                      <p className="text-gray-900">
-                        {Math.ceil((new Date(selectedRequest.return_date).getTime() - new Date(selectedRequest.departure_date).getTime()) / (1000 * 60 * 60 * 24))} days
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Traveler Information</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Employee ID</label>
-                      <p className="text-gray-900">{selectedRequest.traveler_employee_id}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Department</label>
-                      <p className="text-gray-900">{selectedRequest.traveler_department}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Clearance Level</label>
-                      <p className="text-gray-900">{selectedRequest.traveler_clearance_level}</p>
-                    </div>
-                    {selectedRequest.approver && (
-                      <div>
-                        <label className="text-sm font-medium text-gray-500">Approved By</label>
-                        <p className="text-gray-900">{selectedRequest.approver}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              
-              {/* Itinerary and Emergency Contacts */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Itinerary</h3>
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Accommodation</label>
-                      <p className="text-gray-900">{(selectedRequest.itinerary as any)?.accommodation || 'Not specified'}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Transportation</label>
-                      <p className="text-gray-900">{(selectedRequest.itinerary as any)?.transportation || 'Not specified'}</p>
-                    </div>
-                    {(selectedRequest.itinerary as any)?.meetings && (selectedRequest.itinerary as any).meetings.length > 0 && (
-                      <div>
-                        <label className="text-sm font-medium text-gray-500">Scheduled Meetings</label>
-                        <ul className="text-gray-900 space-y-1">
-                          {(selectedRequest.itinerary as any).meetings.map((meeting: string, index: number) => (
-                            <li key={index} className="text-sm">• {meeting}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    {/* Timeline blocks */}
-                    {(selectedRequest.itinerary as any)?.timeline && (selectedRequest.itinerary as any).timeline.length > 0 && (
-                      <div>
-                        <label className="text-sm font-medium text-gray-500 mb-2 block">Timeline</label>
-                        <div className="space-y-2">
-                          {(selectedRequest.itinerary as any).timeline.map((block: any, index: number) => (
-                            <div key={index} className="bg-white p-3 rounded border border-gray-200 text-sm">
-                              {block.type === 'location' && (
-                                <div>
-                                  <div className="flex items-center space-x-2 mb-1">
-                                    <MapPin className="w-3 h-3 text-green-500" />
-                                    <span className="font-medium">{block.data.name}</span>
-                                  </div>
-                                  <p className="text-gray-600 text-xs">{block.data.address}, {block.data.city}</p>
-                                  {block.data.purpose && <p className="text-gray-700 text-xs mt-1">Purpose: {block.data.purpose}</p>}
-                                </div>
-                              )}
-                              {block.type === 'transport' && (
-                                <div>
-                                  <div className="flex items-center space-x-2 mb-1">
-                                    <Plane className="w-3 h-3 text-blue-500" />
-                                    <span className="font-medium capitalize">{block.data.mode} Transport</span>
-                                  </div>
-                                  <p className="text-gray-600 text-xs">{block.data.from} → {block.data.to}</p>
-                                  {block.data.provider && <p className="text-gray-700 text-xs mt-1">Provider: {block.data.provider}</p>}
-                                </div>
-                              )}
-                              {block.type === 'accommodation' && (
-                                <div>
-                                  <div className="flex items-center space-x-2 mb-1">
-                                    <Building className="w-3 h-3 text-purple-500" />
-                                    <span className="font-medium">{block.data.name}</span>
-                                  </div>
-                                  <p className="text-gray-600 text-xs">{block.data.address}, {block.data.city}</p>
-                                  {block.data.roomType && <p className="text-gray-700 text-xs mt-1">Room: {block.data.roomType}</p>}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Emergency Contacts</h3>
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                    {(selectedRequest.emergency_contacts as any)?.local && (
-                      <div>
-                        <label className="text-sm font-medium text-gray-500">Local Emergency</label>
-                        <div className="flex items-center space-x-2">
-                          <Phone className="w-4 h-4 text-gray-400" />
-                          <p className="text-gray-900">{(selectedRequest.emergency_contacts as any).local}</p>
-                        </div>
-                      </div>
-                    )}
-                    {(selectedRequest.emergency_contacts as any)?.embassy && (
-                      <div>
-                        <label className="text-sm font-medium text-gray-500">Embassy/Consulate</label>
-                        <div className="flex items-center space-x-2">
-                          <Phone className="w-4 h-4 text-gray-400" />
-                          <p className="text-gray-900">{(selectedRequest.emergency_contacts as any).embassy}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Documents */}
-              {selectedRequest.documents.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Supporting Documents</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {selectedRequest.documents.map((doc, index) => (
-                      <div key={index} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
-                        <FileText className="w-4 h-4 text-gray-500" />
-                        <span className="text-sm text-gray-700 flex-1">{doc}</span>
-                        <button className="text-blue-600 hover:text-blue-800 text-sm">Download</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              {hasPermission('travel.delete') && (
+                <button
+                  onClick={() => {
+                    handleDeleteTravelPlan(selectedRequest?.id, selectedRequest?.traveler_name);
+                  }}
+                  className="p-2 text-red-600 hover:text-red-800 transition-colors"
+                  title="Delete travel plan"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
               )}
             </div>
           </div>
         </div>
-      )}
+        
+        <div className="p-6 space-y-6">
+          {/* AI Risk Assessment */}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <Brain className="w-5 h-5 text-purple-500" />
+              <span>AI Risk Assessment</span>
+            </h3>
+            <AIRiskInsights
+              score={(selectedRequest?.risk_assessment as any)?.overall || 0}
+              explanation={(selectedRequest?.risk_assessment as any)?.explanation || "No AI analysis available for this travel plan."}
+              recommendations={(selectedRequest?.risk_assessment as any)?.recommendations || []}
+              confidence={(selectedRequest?.risk_assessment as any)?.aiConfidence || 75}
+              trend={(selectedRequest?.risk_assessment as any)?.trend || 'stable'}
+              components={(selectedRequest?.risk_assessment as any)?.components || {}}
+            />
+          </div>
+
+          {/* Applied Mitigations */}
+          {selectedRequest?.mitigations && (selectedRequest?.mitigations as AppliedMitigation[]).length > 0 && (
+            <MitigationDisplay 
+              mitigations={selectedRequest?.mitigations as AppliedMitigation[]}
+              showCategory={true}
+            />
+          )}
+
+          {/* Travel Details */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Travel Details</h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Purpose</label>
+                  <p className="text-gray-900">{selectedRequest?.purpose}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Departure</label>
+                  <p className="text-gray-900">{new Date(selectedRequest?.departure_date).toLocaleString()}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Return</label>
+                  <p className="text-gray-900">{new Date(selectedRequest?.return_date).toLocaleString()}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Duration</label>
+                  <p className="text-gray-900">
+                    {Math.ceil((new Date(selectedRequest?.return_date).getTime() - new Date(selectedRequest?.departure_date).getTime()) / (1000 * 60 * 60 * 24))} days
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Traveler Information</h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Employee ID</label>
+                  <p className="text-gray-900">{selectedRequest?.traveler_employee_id}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Department</label>
+                  <p className="text-gray-900">{selectedRequest?.traveler_department}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Clearance Level</label>
+                  <p className="text-gray-900">{selectedRequest?.traveler_clearance_level}</p>
+                </div>
+                {selectedRequest?.approver && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Approved By</label>
+                    <p className="text-gray-900">{selectedRequest?.approver}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Itinerary and Emergency Contacts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Itinerary</h3>
+              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Accommodation</label>
+                  <p className="text-gray-900">{(selectedRequest?.itinerary as any)?.accommodation || 'Not specified'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Transportation</label>
+                  <p className="text-gray-900">{(selectedRequest?.itinerary as any)?.transportation || 'Not specified'}</p>
+                </div>
+                {(selectedRequest?.itinerary as any)?.meetings && (selectedRequest?.itinerary as any).meetings.length > 0 && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Scheduled Meetings</label>
+                    <ul className="text-gray-900 space-y-1">
+                      {(selectedRequest?.itinerary as any).meetings.map((meeting: string, index: number) => (
+                        <li key={index} className="text-sm">• {meeting}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {/* Timeline blocks */}
+                {(selectedRequest?.itinerary as any)?.timeline && (selectedRequest?.itinerary as any).timeline.length > 0 && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-500 mb-2 block">Timeline</label>
+                    <div className="space-y-2">
+                      {(selectedRequest?.itinerary as any).timeline.map((block: any, index: number) => (
+                        <div key={index} className="bg-white p-3 rounded border border-gray-200 text-sm">
+                          {block.type === 'location' && (
+                            <div>
+                              <div className="flex items-center space-x-2 mb-1">
+                                <MapPin className="w-3 h-3 text-green-500" />
+                                <span className="font-medium">{block.data.name}</span>
+                              </div>
+                              <p className="text-gray-600 text-xs">{block.data.address}, {block.data.city}</p>
+                              {block.data.purpose && <p className="text-gray-700 text-xs mt-1">Purpose: {block.data.purpose}</p>}
+                            </div>
+                          )}
+                          {block.type === 'transport' && (
+                            <div>
+                              <div className="flex items-center space-x-2 mb-1">
+                                <Plane className="w-3 h-3 text-blue-500" />
+                                <span className="font-medium capitalize">{block.data.mode} Transport</span>
+                              </div>
+                              <p className="text-gray-600 text-xs">{block.data.from} → {block.data.to}</p>
+                              {block.data.provider && <p className="text-gray-700 text-xs mt-1">Provider: {block.data.provider}</p>}
+                            </div>
+                          )}
+                          {block.type === 'accommodation' && (
+                            <div>
+                              <div className="flex items-center space-x-2 mb-1">
+                                <Building className="w-3 h-3 text-purple-500" />
+                                <span className="font-medium">{block.data.name}</span>
+                              </div>
+                              <p className="text-gray-600 text-xs">{block.data.address}, {block.data.city}</p>
+                              {block.data.roomType && <p className="text-gray-700 text-xs mt-1">Room: {block.data.roomType}</p>}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Emergency Contacts</h3>
+              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                {(selectedRequest?.emergency_contacts as any)?.local && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Local Emergency</label>
+                    <div className="flex items-center space-x-2">
+                      <Phone className="w-4 h-4 text-gray-400" />
+                      <p className="text-gray-900">{(selectedRequest?.emergency_contacts as any).local}</p>
+                    </div>
+                  </div>
+                )}
+                {(selectedRequest?.emergency_contacts as any)?.embassy && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Embassy/Consulate</label>
+                    <div className="flex items-center space-x-2">
+                      <Phone className="w-4 h-4 text-gray-400" />
+                      <p className="text-gray-900">{(selectedRequest?.emergency_contacts as any).embassy}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Documents */}
+          {selectedRequest?.documents.length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Supporting Documents</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {selectedRequest?.documents.map((doc: string, index: number) => (
+                  <div key={index} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+                    <FileText className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm text-gray-700 flex-1">{doc}</span>
+                    <button className="text-blue-600 hover:text-blue-800 text-sm">Download</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 };

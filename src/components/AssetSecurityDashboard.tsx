@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Shield,
   Building,
@@ -37,17 +37,15 @@ import {
 } from 'lucide-react';
 import GoogleMapComponent from './common/GoogleMapComponent';
 import AddAssetForm from './AddAssetForm';
-import { supabase, Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import MitigationDisplay from './MitigationDisplay';
 import { AppliedMitigation } from '../types/mitigation';
 import AIRiskInsights from './AIRiskInsights';
-
-type Asset = Database['public']['Tables']['assets']['Row'];
-type AssetInsert = Database['public']['Tables']['assets']['Insert'];
+import { useAssets } from '../hooks/useAssets';
+import Modal from './common/Modal';
 
 const AssetSecurityDashboard: React.FC = () => {
-  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'map'>('list');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
@@ -56,84 +54,35 @@ const AssetSecurityDashboard: React.FC = () => {
   const [sortField, setSortField] = useState<string>('ai_risk_score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showAddAssetForm, setShowAddAssetForm] = useState(false);
-  const [assetsData, setAssetsData] = useState<Asset[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const { hasPermission, user, profile } = useAuth();
+  const { hasPermission } = useAuth();
+  const { 
+    assets: assetsData, 
+    loading, 
+    error, 
+    fetchAssets, 
+    addAsset, 
+    deleteAsset, 
+    logAuditEvent 
+  } = useAssets();
 
   // Add console log to track rendering and state
   console.log('AssetSecurityDashboard rendering, showAddAssetForm:', showAddAssetForm);
 
-  useEffect(() => {
-    fetchAssets();
-  }, []);
-
-  const fetchAssets = async () => {
+  const handleAddAsset = async (assetData: any) => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      const { data, error: fetchError } = await supabase
-        .from('assets')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (fetchError) {
-        throw fetchError;
+      const newAsset = await addAsset(assetData);
+      if (newAsset) {
+        await logAuditEvent('asset_created', newAsset.id, { 
+          asset_name: newAsset.name,
+          asset_type: newAsset.type,
+          asset_location: newAsset.location
+        });
       }
-
-      setAssetsData(data || []);
-    } catch (err) {
-      console.error('Error fetching assets:', err);
-      setError('Failed to load asset data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddAsset = async (assetData: AssetInsert) => {
-    try {
-      const { error } = await supabase
-        .from('assets')
-        .insert([assetData]);
-
-      if (error) {
-        throw error;
-      }
-
-      // Refresh the assets list
-      await fetchAssets();
       setShowAddAssetForm(false);
     } catch (err) {
       console.error('Error adding asset:', err);
       throw err;
-    }
-  };
-
-  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
-    if (!profile?.organization_id) {
-      console.warn('Cannot log audit event: no organization ID available');
-      return;
-    }
-    
-    try {
-      const { error } = await supabase.from('audit_logs').insert({
-        user_id: user?.id || null,
-        organization_id: profile.organization_id,
-        action,
-        resource_type: 'asset',
-        resource_id: resourceId,
-        details,
-        ip_address: null, // We'll skip IP detection for now to avoid additional API calls
-        user_agent: navigator.userAgent
-      });
-
-      if (error) {
-        console.error('Error logging audit event:', error);
-      }
-    } catch (error) {
-      console.error('Unexpected error logging audit event:', error);
     }
   };
 
@@ -146,17 +95,8 @@ const AssetSecurityDashboard: React.FC = () => {
     }
     
     try {
-      setLoading(true);
-      
       // Delete the asset from the database
-      const { error } = await supabase
-        .from('assets')
-        .delete()
-        .eq('id', assetId);
-
-      if (error) {
-        throw error;
-      }
+      await deleteAsset(assetId);
 
       // Log the deletion in audit logs
       await logAuditEvent('asset_deleted', assetId, { 
@@ -168,15 +108,8 @@ const AssetSecurityDashboard: React.FC = () => {
       if (selectedAsset?.id === assetId) {
         setSelectedAsset(null);
       }
-      
-      // Refresh the assets list
-      await fetchAssets();
-      
     } catch (err) {
       console.error('Error deleting asset:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete asset');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -255,8 +188,8 @@ const AssetSecurityDashboard: React.FC = () => {
       aValue = (a.ai_risk_score as any)?.overall || 0;
       bValue = (b.ai_risk_score as any)?.overall || 0;
     } else {
-      aValue = a[sortField as keyof Asset];
-      bValue = b[sortField as keyof Asset];
+      aValue = a[sortField as keyof typeof a];
+      bValue = b[sortField as keyof typeof b];
     }
     
     if (sortDirection === 'asc') {
@@ -305,7 +238,7 @@ const AssetSecurityDashboard: React.FC = () => {
   }));
 
   // Calculate map center based on filtered assets
-  const mapCenter = useMemo(() => {
+  const mapCenter = React.useMemo(() => {
     if (filteredAssets.length === 0) return { lat: 40.7128, lng: -74.0060 };
     
     const validAssets = filteredAssets.filter(asset => 
@@ -782,184 +715,178 @@ const AssetSecurityDashboard: React.FC = () => {
       )}
 
       {/* Asset Detail Modal */}
-      {selectedAsset && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center">
-                    <Building className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900">{selectedAsset.name}</h2>
-                    <p className="text-gray-600">{selectedAsset.id.slice(0, 8)} • {selectedAsset.type.replace('-', ' ')}</p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Brain className="w-5 h-5 text-purple-500" />
-                    <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full border ${getAIRiskColor((selectedAsset.ai_risk_score as any)?.overall || 0)}`}>
-                      AI Risk: {(selectedAsset.ai_risk_score as any)?.overall || 0}
-                    </span>
-                  </div>
+      <Modal
+        isOpen={!!selectedAsset}
+        onClose={() => setSelectedAsset(null)}
+        size="full"
+      >
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center">
+                <Building className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">{selectedAsset?.name}</h2>
+                <p className="text-gray-600">{selectedAsset?.id.slice(0, 8)} • {selectedAsset?.type.replace('-', ' ')}</p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Brain className="w-5 h-5 text-purple-500" />
+                <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full border ${getAIRiskColor((selectedAsset?.ai_risk_score as any)?.overall || 0)}`}>
+                  AI Risk: {(selectedAsset?.ai_risk_score as any)?.overall || 0}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              {hasPermission('assets.delete') && (
+                <button
+                  onClick={() => {
+                    handleDeleteAsset(selectedAsset?.id, selectedAsset?.name);
+                  }}
+                  className="p-2 text-red-600 hover:text-red-800 transition-colors"
+                  title="Delete asset"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <div className="p-6 space-y-6">
+          {/* AI Risk Assessment */}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <Brain className="w-5 h-5 text-purple-500" />
+              <span>AI Risk Assessment</span>
+            </h3>
+            <AIRiskInsights
+              score={(selectedAsset?.ai_risk_score as any)?.overall || 0}
+              explanation={(selectedAsset?.ai_risk_score as any)?.explanation || "No AI analysis available for this asset."}
+              recommendations={(selectedAsset?.ai_risk_score as any)?.recommendations || []}
+              confidence={(selectedAsset?.ai_risk_score as any)?.confidence || 75}
+              trend={(selectedAsset?.ai_risk_score as any)?.trend || 'stable'}
+              components={(selectedAsset?.ai_risk_score as any)?.components || {}}
+            />
+          </div>
+
+          {/* Applied Mitigations */}
+          {selectedAsset?.mitigations && (selectedAsset?.mitigations as AppliedMitigation[]).length > 0 && (
+            <MitigationDisplay 
+              mitigations={selectedAsset?.mitigations as AppliedMitigation[]}
+              showCategory={true}
+            />
+          )}
+
+          {/* Basic Information and Security Systems */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Location</label>
+                  <p className="text-gray-900">{(selectedAsset?.location as any)?.address || 'No address'}</p>
+                  <p className="text-gray-600">{(selectedAsset?.location as any)?.city || 'Unknown'}, {(selectedAsset?.location as any)?.country || 'Unknown'}</p>
                 </div>
-                <div className="flex items-center space-x-2">
-                  {hasPermission('assets.delete') && (
-                    <button
-                      onClick={() => {
-                        handleDeleteAsset(selectedAsset.id, selectedAsset.name);
-                      }}
-                      className="p-2 text-red-600 hover:text-red-800 transition-colors"
-                      title="Delete asset"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setSelectedAsset(null)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <XCircle className="w-6 h-6" />
-                  </button>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Personnel Capacity</label>
+                  <p className="text-gray-900">{(selectedAsset?.personnel as any)?.current || 0} / {(selectedAsset?.personnel as any)?.capacity || 0}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Responsible Officer</label>
+                  <p className="text-gray-900">{(selectedAsset?.responsible_officer as any)?.name || 'Unknown'}</p>
+                  <p className="text-gray-600">{(selectedAsset?.responsible_officer as any)?.email || 'No email'}</p>
                 </div>
               </div>
             </div>
             
-            <div className="p-6 space-y-6">
-              {/* AI Risk Assessment */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                  <Brain className="w-5 h-5 text-purple-500" />
-                  <span>AI Risk Assessment</span>
-                </h3>
-                <AIRiskInsights
-                  score={(selectedAsset.ai_risk_score as any)?.overall || 0}
-                  explanation={(selectedAsset.ai_risk_score as any)?.explanation || "No AI analysis available for this asset."}
-                  recommendations={(selectedAsset.ai_risk_score as any)?.recommendations || []}
-                  confidence={(selectedAsset.ai_risk_score as any)?.confidence || 75}
-                  trend={(selectedAsset.ai_risk_score as any)?.trend || 'stable'}
-                  components={(selectedAsset.ai_risk_score as any)?.components || {}}
-                />
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Security Systems</h3>
+              <div className="space-y-3">
+                {(selectedAsset?.security_systems as any) && Object.entries(selectedAsset?.security_systems as any).map(([system, data]: [string, any]) => (
+                  <div key={system} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      {system === 'cctv' && <Camera className="w-4 h-4 text-gray-500" />}
+                      {system === 'accessControl' && <Lock className="w-4 h-4 text-gray-500" />}
+                      {system === 'alarms' && <Shield className="w-4 h-4 text-gray-500" />}
+                      {system === 'fireSupression' && <AlertTriangle className="w-4 h-4 text-gray-500" />}
+                      {system === 'networkSecurity' && <Wifi className="w-4 h-4 text-gray-500" />}
+                      <span className="text-sm font-medium text-gray-700 capitalize">
+                        {system.replace(/([A-Z])/g, ' $1').trim()}
+                      </span>
+                    </div>
+                    <span className={`text-sm font-medium ${getSystemStatusColor(data?.status || 'offline')}`}>
+                      {data?.status || 'offline'}
+                    </span>
+                  </div>
+                ))}
               </div>
-
-              {/* Applied Mitigations */}
-              {selectedAsset.mitigations && (selectedAsset.mitigations as AppliedMitigation[]).length > 0 && (
-                <MitigationDisplay 
-                  mitigations={selectedAsset.mitigations as AppliedMitigation[]}
-                  showCategory={true}
-                />
-              )}
-
-              {/* Basic Information and Security Systems */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Location</label>
-                      <p className="text-gray-900">{(selectedAsset.location as any)?.address || 'No address'}</p>
-                      <p className="text-gray-600">{(selectedAsset.location as any)?.city || 'Unknown'}, {(selectedAsset.location as any)?.country || 'Unknown'}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Personnel Capacity</label>
-                      <p className="text-gray-900">{(selectedAsset.personnel as any)?.current || 0} / {(selectedAsset.personnel as any)?.capacity || 0}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Responsible Officer</label>
-                      <p className="text-gray-900">{(selectedAsset.responsible_officer as any)?.name || 'Unknown'}</p>
-                      <p className="text-gray-600">{(selectedAsset.responsible_officer as any)?.email || 'No email'}</p>
-                    </div>
+            </div>
+          </div>
+          
+          {/* Compliance and Incidents */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Compliance</h3>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">Compliance Score</span>
+                    <span className="text-lg font-bold text-green-600">{(selectedAsset?.compliance as any)?.score || 0}%</span>
                   </div>
-                </div>
-                
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Security Systems</h3>
-                  <div className="space-y-3">
-                    {(selectedAsset.security_systems as any) && Object.entries(selectedAsset.security_systems as any).map(([system, data]: [string, any]) => (
-                      <div key={system} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center space-x-2">
-                          {system === 'cctv' && <Camera className="w-4 h-4 text-gray-500" />}
-                          {system === 'accessControl' && <Lock className="w-4 h-4 text-gray-500" />}
-                          {system === 'alarms' && <Shield className="w-4 h-4 text-gray-500" />}
-                          {system === 'fireSupression' && <AlertTriangle className="w-4 h-4 text-gray-500" />}
-                          {system === 'networkSecurity' && <Wifi className="w-4 h-4 text-gray-500" />}
-                          <span className="text-sm font-medium text-gray-700 capitalize">
-                            {system.replace(/([A-Z])/g, ' $1').trim()}
-                          </span>
-                        </div>
-                        <span className={`text-sm font-medium ${getSystemStatusColor(data?.status || 'offline')}`}>
-                          {data?.status || 'offline'}
-                        </span>
-                      </div>
-                    ))}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Last Audit</span>
+                    <span className="text-sm text-gray-900">{(selectedAsset?.compliance as any)?.lastAudit ? new Date((selectedAsset?.compliance as any).lastAudit).toLocaleDateString() : 'Unknown'}</span>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Next Audit</span>
+                    <span className="text-sm text-gray-900">{(selectedAsset?.compliance as any)?.nextAudit ? new Date((selectedAsset?.compliance as any).nextAudit).toLocaleDateString() : 'Unknown'}</span>
+                  </div>
+                  {(selectedAsset?.compliance as any)?.issues && (selectedAsset?.compliance as any).issues.length > 0 && (
+                    <div>
+                      <span className="text-sm font-medium text-gray-700">Outstanding Issues</span>
+                      <ul className="mt-1 space-y-1">
+                        {(selectedAsset?.compliance as any).issues.map((issue: string, index: number) => (
+                          <li key={index} className="text-sm text-red-600">• {issue}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
-              
-              {/* Compliance and Incidents */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Compliance</h3>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-700">Compliance Score</span>
-                        <span className="text-lg font-bold text-green-600">{(selectedAsset.compliance as any)?.score || 0}%</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Last Audit</span>
-                        <span className="text-sm text-gray-900">{(selectedAsset.compliance as any)?.lastAudit ? new Date((selectedAsset.compliance as any).lastAudit).toLocaleDateString() : 'Unknown'}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Next Audit</span>
-                        <span className="text-sm text-gray-900">{(selectedAsset.compliance as any)?.nextAudit ? new Date((selectedAsset.compliance as any).nextAudit).toLocaleDateString() : 'Unknown'}</span>
-                      </div>
-                      {(selectedAsset.compliance as any)?.issues && (selectedAsset.compliance as any).issues.length > 0 && (
-                        <div>
-                          <span className="text-sm font-medium text-gray-700">Outstanding Issues</span>
-                          <ul className="mt-1 space-y-1">
-                            {(selectedAsset.compliance as any).issues.map((issue: string, index: number) => (
-                              <li key={index} className="text-sm text-red-600">• {issue}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
+            </div>
+            
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Incident History</h3>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">Total Incidents</span>
+                    <span className="text-lg font-bold text-gray-900">{(selectedAsset?.incidents as any)?.total || 0}</span>
                   </div>
-                </div>
-                
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Incident History</h3>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-700">Total Incidents</span>
-                        <span className="text-lg font-bold text-gray-900">{(selectedAsset.incidents as any)?.total || 0}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Last Incident</span>
-                        <span className="text-sm text-gray-900">
-                          {(selectedAsset.incidents as any)?.lastIncident === 'None' ? 'None' : ((selectedAsset.incidents as any)?.lastIncident ? new Date((selectedAsset.incidents as any).lastIncident).toLocaleDateString() : 'Unknown')}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Severity Level</span>
-                        <span className={`text-sm font-medium capitalize ${
-                          (selectedAsset.incidents as any)?.severity === 'critical' ? 'text-red-600' :
-                          (selectedAsset.incidents as any)?.severity === 'high' ? 'text-orange-600' :
-                          (selectedAsset.incidents as any)?.severity === 'medium' ? 'text-yellow-600' :
-                          'text-green-600'
-                        }`}>
-                          {(selectedAsset.incidents as any)?.severity || 'low'}
-                        </span>
-                      </div>
-                    </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Last Incident</span>
+                    <span className="text-sm text-gray-900">
+                      {(selectedAsset?.incidents as any)?.lastIncident === 'None' ? 'None' : ((selectedAsset?.incidents as any)?.lastIncident ? new Date((selectedAsset?.incidents as any).lastIncident).toLocaleDateString() : 'Unknown')}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Severity Level</span>
+                    <span className={`text-sm font-medium capitalize ${
+                      (selectedAsset?.incidents as any)?.severity === 'critical' ? 'text-red-600' :
+                      (selectedAsset?.incidents as any)?.severity === 'high' ? 'text-orange-600' :
+                      (selectedAsset?.incidents as any)?.severity === 'medium' ? 'text-yellow-600' :
+                      'text-green-600'
+                    }`}>
+                      {(selectedAsset?.incidents as any)?.severity || 'low'}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 };
