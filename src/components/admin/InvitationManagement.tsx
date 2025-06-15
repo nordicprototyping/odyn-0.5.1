@@ -57,7 +57,7 @@ const InvitationManagement: React.FC = () => {
       
       const { data, error: fetchError } = await supabase
         .from('organization_invitations')
-        .select('*')
+        .select('id, invited_email, invitation_code, role, status, expires_at, created_at')
         .order('created_at', { ascending: false });
 
       if (fetchError) {
