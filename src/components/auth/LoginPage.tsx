@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Eye, EyeOff, Shield, Lock, Mail, AlertCircle, CheckCircle, Loader2, Brain } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import zxcvbn from 'zxcvbn';
 
 interface PasswordStrength {
@@ -26,15 +26,25 @@ const LoginPage: React.FC = () => {
   const [passwordStrength, setPasswordStrength] = useState<PasswordStrength | null>(null);
   const [showTwoFactor, setShowTwoFactor] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [searchParams] = useSearchParams();
+  const invitationCode = searchParams.get('invitation');
 
   const { signIn, signUp, resetPassword, verifyTwoFactor, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (user) {
-      navigate('/dashboard');
+      // If there's an invitation code, redirect to join organization page
+      if (invitationCode) {
+        navigate(`/join-organization?code=${invitationCode}`);
+      } else {
+        // Otherwise, redirect to dashboard or the page they were trying to access
+        const from = location.state?.from?.pathname || '/dashboard';
+        navigate(from);
+      }
     }
-  }, [user, navigate]);
+  }, [user, navigate, location, invitationCode]);
 
   useEffect(() => {
     if (!isLogin && password) {
@@ -84,22 +94,31 @@ const LoginPage: React.FC = () => {
           setShowTwoFactor(true);
           setSuccess('Please enter your two-factor authentication code.');
         } else {
-          navigate('/dashboard');
+          // If there's an invitation code, redirect to join organization page
+          if (invitationCode) {
+            navigate(`/join-organization?code=${invitationCode}`);
+          } else {
+            const from = location.state?.from?.pathname || '/dashboard';
+            navigate(from);
+          }
         }
       } else {
         // Validation for signup
         if (!validatePassword(password)) {
           setError('Password must be at least 8 characters long and contain uppercase, lowercase, numbers, and special characters.');
+          setLoading(false);
           return;
         }
 
         if (password !== confirmPassword) {
           setError('Passwords do not match.');
+          setLoading(false);
           return;
         }
 
         if (passwordStrength && passwordStrength.score < 2) {
           setError('Password is too weak. Please choose a stronger password.');
+          setLoading(false);
           return;
         }
 
@@ -130,7 +149,13 @@ const LoginPage: React.FC = () => {
       if (result.error) {
         setError(result.error);
       } else {
-        navigate('/dashboard');
+        // If there's an invitation code, redirect to join organization page
+        if (invitationCode) {
+          navigate(`/join-organization?code=${invitationCode}`);
+        } else {
+          const from = location.state?.from?.pathname || '/dashboard';
+          navigate(from);
+        }
       }
     } catch (error) {
       setError('Invalid two-factor code. Please try again.');
@@ -258,6 +283,13 @@ const LoginPage: React.FC = () => {
             <p className="text-gray-600">
               {isLogin ? 'Sign in to your account' : 'Create your account'}
             </p>
+            {invitationCode && (
+              <div className="mt-2 p-2 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-700">
+                  You've been invited to join an organization
+                </p>
+              </div>
+            )}
           </div>
 
           {error && (

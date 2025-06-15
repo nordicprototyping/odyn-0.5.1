@@ -23,6 +23,7 @@ interface AuthContextType {
   hasPermission: (permission: string) => boolean;
   hasRole: (role: string | string[]) => boolean;
   refreshProfile: () => Promise<void>;
+  joinOrganization: (invitationCode: string) => Promise<{ error?: string; organization?: { id: string; name: string } }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -50,7 +51,7 @@ const ROLE_PERMISSIONS = {
     'mitigations.create', 'mitigations.read', 'mitigations.update', 'mitigations.delete'
   ],
   admin: [
-    'users.read', 'users.update',
+    'users.read', 'users.update', 'users.create',
     'assets.create', 'assets.read', 'assets.update', 'assets.delete',
     'incidents.create', 'incidents.read', 'incidents.update', 'incidents.delete',
     'risks.create', 'risks.read', 'risks.update', 'risks.delete',
@@ -79,7 +80,7 @@ const ROLE_PERMISSIONS = {
 };
 
 // Helper function to wait for a specified duration
-const wait = (ms: number) => new Promise(resolve => setTimeout(resolve));
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -418,6 +419,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const joinOrganization = async (invitationCode: string) => {
+    try {
+      if (!user) {
+        return { error: 'You must be logged in to join an organization' };
+      }
+
+      // Get the current session
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      
+      if (!accessToken) {
+        return { error: 'No access token available' };
+      }
+
+      // Call the accept-invitation edge function
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/accept-invitation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          invitationCode
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        return { error: result.error || 'Failed to join organization' };
+      }
+
+      // Refresh user profile to get updated organization
+      await refreshProfile();
+      
+      return { 
+        organization: result.organization
+      };
+    } catch (error) {
+      console.error('Error joining organization:', error);
+      return { error: 'An unexpected error occurred while joining the organization' };
+    }
+  };
+
   const hasPermission = (permission: string): boolean => {
     if (!profile) return false;
     const rolePermissions = ROLE_PERMISSIONS[profile.role] || [];
@@ -464,7 +509,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     disableTwoFactor,
     hasPermission,
     hasRole,
-    refreshProfile
+    refreshProfile,
+    joinOrganization
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

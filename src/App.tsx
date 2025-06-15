@@ -9,12 +9,14 @@ import DashboardPage from './pages/DashboardPage';
 import UserManagement from './components/admin/UserManagement';
 import OrganizationSettings from './components/admin/OrganizationSettings';
 import OrganizationManagement from './components/admin/OrganizationManagement';
+import InvitationManagement from './components/admin/InvitationManagement';
 import TravelSecurityManagement from './components/TravelSecurityManagement';
 import RiskManagement from './components/RiskManagement';
 import PersonnelDashboard from './components/PersonnelDashboard';
 import IncidentManagement from './components/IncidentManagement';
 import AssetSecurityDashboard from './components/AssetSecurityDashboard';
 import MitigationsPage from './pages/MitigationsPage';
+import JoinOrganizationPage from './pages/JoinOrganizationPage';
 import './index.css';
 
 function App() {
@@ -31,6 +33,7 @@ function App() {
               </ProtectedRoute>
             } 
           />
+          <Route path="/join-organization" element={<JoinOrganizationPage />} />
           
           {/* Dashboard routes with layout */}
           <Route 
@@ -146,6 +149,16 @@ function App() {
               <ProtectedRoute requiredPermission="users.read">
                 <MainLayout>
                   <UserManagement />
+                </MainLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/invitations" 
+            element={
+              <ProtectedRoute requiredPermission="users.create">
+                <MainLayout>
+                  <InvitationManagement />
                 </MainLayout>
               </ProtectedRoute>
             } 
