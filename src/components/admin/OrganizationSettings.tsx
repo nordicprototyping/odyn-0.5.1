@@ -18,11 +18,14 @@ import {
   Plus, 
   Trash2, 
   Edit, 
-  X 
+  X,
+  Brain,
+  Zap
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import Modal from '../common/Modal';
+import AIUsageMonitoring from './AIUsageMonitoring';
 
 const OrganizationSettings: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -75,6 +78,29 @@ const OrganizationSettings: React.FC = () => {
         lockoutDuration: 30
       }
     },
+    notifications: {
+      email: {
+        enabled: true,
+        templates: {
+          welcome: true,
+          passwordReset: true,
+          securityAlerts: true
+        }
+      },
+      alerts: {
+        securityIncidents: true,
+        systemMaintenance: true,
+        userActivity: false,
+        riskAssessments: true
+      },
+      thresholds: {
+        highRiskScore: 70,
+        criticalRiskScore: 90,
+        unusualActivity: true,
+        geopoliticalEvents: true,
+        travelRisks: true
+      }
+    },
     departments: {
       list: []
     }
@@ -89,6 +115,7 @@ const OrganizationSettings: React.FC = () => {
     headCount: 0,
     securityLevel: 'standard'
   });
+  const [activeTab, setActiveTab] = useState<'general' | 'notifications' | 'security' | 'odynsentinel'>('general');
 
   const { organization, hasPermission } = useAuth();
 
@@ -307,670 +334,1049 @@ const OrganizationSettings: React.FC = () => {
 
       {/* Settings Tabs */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200">
+          <nav className="flex space-x-8 px-6">
+            <button
+              onClick={() => setActiveTab('general')}
+              className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'general'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Building className="w-5 h-5" />
+              <span>General</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('notifications')}
+              className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'notifications'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Bell className="w-5 h-5" />
+              <span>Notifications</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('security')}
+              className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'security'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Shield className="w-5 h-5" />
+              <span>Security</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('odynsentinel')}
+              className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'odynsentinel'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Brain className="w-5 h-5" />
+              <span>OdynSentinel</span>
+            </button>
+          </nav>
+        </div>
+
         <div className="p-6 space-y-6">
-          {/* General Information */}
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-              <Building className="w-5 h-5 text-blue-500" />
-              <span>General Information</span>
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* General Tab */}
+          {activeTab === 'general' && (
+            <div className="space-y-6">
+              {/* General Information */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Organization Description
-                </label>
-                <textarea
-                  rows={3}
-                  value={settings.general.description || ''}
-                  onChange={(e) => handleInputChange('general.description', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Brief description of your organization"
-                  disabled={!hasPermission('organizations.update')}
-                />
-              </div>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Website
-                  </label>
-                  <input
-                    type="url"
-                    value={settings.general.website || ''}
-                    onChange={(e) => handleInputChange('general.website', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="https://example.com"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Industry
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.general.industry || ''}
-                    onChange={(e) => handleInputChange('general.industry', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="e.g., Government, Finance, Technology"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Organization Size
-                  </label>
-                  <select
-                    value={settings.general.size || ''}
-                    onChange={(e) => handleInputChange('general.size', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={!hasPermission('organizations.update')}
-                  >
-                    <option value="">Select Size</option>
-                    <option value="1-50">1-50 employees</option>
-                    <option value="51-200">51-200 employees</option>
-                    <option value="201-500">201-500 employees</option>
-                    <option value="501-1000">501-1000 employees</option>
-                    <option value="1001-5000">1001-5000 employees</option>
-                    <option value="5001+">5001+ employees</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          {/* Headquarters */}
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-              <Globe className="w-5 h-5 text-green-500" />
-              <span>Headquarters</span>
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Address
-                </label>
-                <input
-                  type="text"
-                  value={settings.general.headquarters?.address || ''}
-                  onChange={(e) => handleInputChange('general.headquarters.address', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Street address"
-                  disabled={!hasPermission('organizations.update')}
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    City
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.general.headquarters?.city || ''}
-                    onChange={(e) => handleInputChange('general.headquarters.city', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="City"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Country
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.general.headquarters?.country || ''}
-                    onChange={(e) => handleInputChange('general.headquarters.country', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Country"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Timezone
-                </label>
-                <select
-                  value={settings.general.headquarters?.timezone || ''}
-                  onChange={(e) => handleInputChange('general.headquarters.timezone', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={!hasPermission('organizations.update')}
-                >
-                  <option value="">Select Timezone</option>
-                  <option value="UTC-12:00">UTC-12:00</option>
-                  <option value="UTC-11:00">UTC-11:00</option>
-                  <option value="UTC-10:00">UTC-10:00</option>
-                  <option value="UTC-09:00">UTC-09:00</option>
-                  <option value="UTC-08:00">UTC-08:00 (PST)</option>
-                  <option value="UTC-07:00">UTC-07:00 (MST)</option>
-                  <option value="UTC-06:00">UTC-06:00 (CST)</option>
-                  <option value="UTC-05:00">UTC-05:00 (EST)</option>
-                  <option value="UTC-04:00">UTC-04:00</option>
-                  <option value="UTC-03:00">UTC-03:00</option>
-                  <option value="UTC-02:00">UTC-02:00</option>
-                  <option value="UTC-01:00">UTC-01:00</option>
-                  <option value="UTC+00:00">UTC+00:00</option>
-                  <option value="UTC+01:00">UTC+01:00</option>
-                  <option value="UTC+02:00">UTC+02:00</option>
-                  <option value="UTC+03:00">UTC+03:00</option>
-                  <option value="UTC+04:00">UTC+04:00</option>
-                  <option value="UTC+05:00">UTC+05:00</option>
-                  <option value="UTC+05:30">UTC+05:30 (IST)</option>
-                  <option value="UTC+06:00">UTC+06:00</option>
-                  <option value="UTC+07:00">UTC+07:00</option>
-                  <option value="UTC+08:00">UTC+08:00</option>
-                  <option value="UTC+09:00">UTC+09:00 (JST)</option>
-                  <option value="UTC+10:00">UTC+10:00</option>
-                  <option value="UTC+11:00">UTC+11:00</option>
-                  <option value="UTC+12:00">UTC+12:00</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          
-          {/* Contact Information */}
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-              <Mail className="w-5 h-5 text-purple-500" />
-              <span>Contact Information</span>
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Primary Email
-                </label>
-                <input
-                  type="email"
-                  value={settings.general.contact?.email || ''}
-                  onChange={(e) => handleInputChange('general.contact.email', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="contact@example.com"
-                  disabled={!hasPermission('organizations.update')}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Phone Number
-                </label>
-                <input
-                  type="tel"
-                  value={settings.general.contact?.phone || ''}
-                  onChange={(e) => handleInputChange('general.contact.phone', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="+1-555-0123"
-                  disabled={!hasPermission('organizations.update')}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Emergency Phone
-                </label>
-                <input
-                  type="tel"
-                  value={settings.general.contact?.emergencyPhone || ''}
-                  onChange={(e) => handleInputChange('general.contact.emergencyPhone', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="+1-555-0123"
-                  disabled={!hasPermission('organizations.update')}
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Security Settings */}
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-              <Shield className="w-5 h-5 text-red-500" />
-              <span>Security Settings</span>
-            </h2>
-            
-            {/* Password Policy */}
-            <div className="mb-6">
-              <h3 className="text-md font-medium text-gray-800 mb-3 flex items-center space-x-2">
-                <Lock className="w-4 h-4 text-gray-600" />
-                <span>Password Policy</span>
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Minimum Length
-                  </label>
-                  <input
-                    type="number"
-                    min="8"
-                    max="32"
-                    value={settings.security.passwordPolicy?.minLength || 8}
-                    onChange={(e) => handleInputChange('security.passwordPolicy.minLength', parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Maximum Age (days)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="365"
-                    value={settings.security.passwordPolicy?.maxAge || 90}
-                    onChange={(e) => handleInputChange('security.passwordPolicy.maxAge', parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Set to 0 for no expiration</p>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Prevent Password Reuse
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="24"
-                    value={settings.security.passwordPolicy?.preventReuse || 5}
-                    onChange={(e) => handleInputChange('security.passwordPolicy.preventReuse', parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Number of previous passwords to check</p>
-                </div>
-              </div>
-              
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="requireUppercase"
-                    checked={settings.security.passwordPolicy?.requireUppercase || false}
-                    onChange={(e) => handleInputChange('security.passwordPolicy.requireUppercase', e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                  <label htmlFor="requireUppercase" className="ml-2 text-sm text-gray-700">
-                    Require uppercase
-                  </label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="requireLowercase"
-                    checked={settings.security.passwordPolicy?.requireLowercase || false}
-                    onChange={(e) => handleInputChange('security.passwordPolicy.requireLowercase', e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                  <label htmlFor="requireLowercase" className="ml-2 text-sm text-gray-700">
-                    Require lowercase
-                  </label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="requireNumbers"
-                    checked={settings.security.passwordPolicy?.requireNumbers || false}
-                    onChange={(e) => handleInputChange('security.passwordPolicy.requireNumbers', e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                  <label htmlFor="requireNumbers" className="ml-2 text-sm text-gray-700">
-                    Require numbers
-                  </label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="requireSpecialChars"
-                    checked={settings.security.passwordPolicy?.requireSpecialChars || false}
-                    onChange={(e) => handleInputChange('security.passwordPolicy.requireSpecialChars', e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                  <label htmlFor="requireSpecialChars" className="ml-2 text-sm text-gray-700">
-                    Require special chars
-                  </label>
-                </div>
-              </div>
-            </div>
-            
-            {/* Session Policy */}
-            <div className="mb-6">
-              <h3 className="text-md font-medium text-gray-800 mb-3 flex items-center space-x-2">
-                <Clock className="w-4 h-4 text-gray-600" />
-                <span>Session Policy</span>
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Max Session Duration (hours)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="720"
-                    value={settings.security.sessionPolicy?.maxDuration || 24}
-                    onChange={(e) => handleInputChange('security.sessionPolicy.maxDuration', parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Idle Timeout (minutes)
-                  </label>
-                  <input
-                    type="number"
-                    min="5"
-                    max="240"
-                    value={settings.security.sessionPolicy?.idleTimeout || 30}
-                    onChange={(e) => handleInputChange('security.sessionPolicy.idleTimeout', parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Max Concurrent Sessions
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={settings.security.sessionPolicy?.maxConcurrentSessions || 3}
-                    onChange={(e) => handleInputChange('security.sessionPolicy.maxConcurrentSessions', parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="requireReauth"
-                    checked={settings.security.sessionPolicy?.requireReauth || false}
-                    onChange={(e) => handleInputChange('security.sessionPolicy.requireReauth', e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                  <label htmlFor="requireReauth" className="ml-2 text-sm text-gray-700">
-                    Require re-authentication for sensitive actions
-                  </label>
-                </div>
-              </div>
-            </div>
-            
-            {/* Two-Factor Authentication */}
-            <div className="mb-6">
-              <h3 className="text-md font-medium text-gray-800 mb-3 flex items-center space-x-2">
-                <Key className="w-4 h-4 text-gray-600" />
-                <span>Two-Factor Authentication</span>
-              </h3>
-              <div className="space-y-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="twoFactorRequired"
-                    checked={settings.security.twoFactorAuth?.required || false}
-                    onChange={(e) => handleInputChange('security.twoFactorAuth.required', e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                  <label htmlFor="twoFactorRequired" className="ml-2 text-sm text-gray-700">
-                    Require two-factor authentication for all users
-                  </label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="backupCodes"
-                    checked={settings.security.twoFactorAuth?.backupCodes || false}
-                    onChange={(e) => handleInputChange('security.twoFactorAuth.backupCodes', e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                  <label htmlFor="backupCodes" className="ml-2 text-sm text-gray-700">
-                    Enable backup codes
-                  </label>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Allowed Methods
-                  </label>
-                  <div className="space-y-2">
-                    <div className="flex items-center">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <Building className="w-5 h-5 text-blue-500" />
+                  <span>General Information</span>
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Organization Description
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={settings.general.description || ''}
+                      onChange={(e) => handleInputChange('general.description', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Brief description of your organization"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Website
+                      </label>
                       <input
-                        type="checkbox"
-                        id="methodApp"
-                        checked={(settings.security.twoFactorAuth?.allowedMethods || []).includes('app')}
-                        onChange={(e) => {
-                          const methods = [...(settings.security.twoFactorAuth?.allowedMethods || [])];
-                          if (e.target.checked) {
-                            if (!methods.includes('app')) methods.push('app');
-                          } else {
-                            const index = methods.indexOf('app');
-                            if (index !== -1) methods.splice(index, 1);
-                          }
-                          handleInputChange('security.twoFactorAuth.allowedMethods', methods);
-                        }}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        type="url"
+                        value={settings.general.website || ''}
+                        onChange={(e) => handleInputChange('general.website', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="https://example.com"
                         disabled={!hasPermission('organizations.update')}
                       />
-                      <label htmlFor="methodApp" className="ml-2 text-sm text-gray-700">
-                        Authenticator App (TOTP)
-                      </label>
                     </div>
                     
-                    <div className="flex items-center">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Industry
+                      </label>
                       <input
-                        type="checkbox"
-                        id="methodSms"
-                        checked={(settings.security.twoFactorAuth?.allowedMethods || []).includes('sms')}
-                        onChange={(e) => {
-                          const methods = [...(settings.security.twoFactorAuth?.allowedMethods || [])];
-                          if (e.target.checked) {
-                            if (!methods.includes('sms')) methods.push('sms');
-                          } else {
-                            const index = methods.indexOf('sms');
-                            if (index !== -1) methods.splice(index, 1);
-                          }
-                          handleInputChange('security.twoFactorAuth.allowedMethods', methods);
-                        }}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        type="text"
+                        value={settings.general.industry || ''}
+                        onChange={(e) => handleInputChange('general.industry', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="e.g., Government, Finance, Technology"
                         disabled={!hasPermission('organizations.update')}
                       />
-                      <label htmlFor="methodSms" className="ml-2 text-sm text-gray-700">
-                        SMS
-                      </label>
                     </div>
                     
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="methodEmail"
-                        checked={(settings.security.twoFactorAuth?.allowedMethods || []).includes('email')}
-                        onChange={(e) => {
-                          const methods = [...(settings.security.twoFactorAuth?.allowedMethods || [])];
-                          if (e.target.checked) {
-                            if (!methods.includes('email')) methods.push('email');
-                          } else {
-                            const index = methods.indexOf('email');
-                            if (index !== -1) methods.splice(index, 1);
-                          }
-                          handleInputChange('security.twoFactorAuth.allowedMethods', methods);
-                        }}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        disabled={!hasPermission('organizations.update')}
-                      />
-                      <label htmlFor="methodEmail" className="ml-2 text-sm text-gray-700">
-                        Email
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Organization Size
                       </label>
+                      <select
+                        value={settings.general.size || ''}
+                        onChange={(e) => handleInputChange('general.size', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        disabled={!hasPermission('organizations.update')}
+                      >
+                        <option value="">Select Size</option>
+                        <option value="1-50">1-50 employees</option>
+                        <option value="51-200">51-200 employees</option>
+                        <option value="201-500">201-500 employees</option>
+                        <option value="501-1000">501-1000 employees</option>
+                        <option value="1001-5000">1001-5000 employees</option>
+                        <option value="5001+">5001+ employees</option>
+                      </select>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-            
-            {/* Access Control */}
-            <div>
-              <h3 className="text-md font-medium text-gray-800 mb-3 flex items-center space-x-2">
-                <Users className="w-4 h-4 text-gray-600" />
-                <span>Access Control</span>
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Default Role
-                  </label>
-                  <select
-                    value={settings.security.accessControl?.defaultRole || 'user'}
-                    onChange={(e) => handleInputChange('security.accessControl.defaultRole', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={!hasPermission('organizations.update')}
-                  >
-                    <option value="user">User</option>
-                    <option value="manager">Manager</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Max Failed Login Attempts
-                  </label>
-                  <input
-                    type="number"
-                    min="3"
-                    max="10"
-                    value={settings.security.accessControl?.maxFailedAttempts || 5}
-                    onChange={(e) => handleInputChange('security.accessControl.maxFailedAttempts', parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Account Lockout Duration (minutes)
-                  </label>
-                  <input
-                    type="number"
-                    min="5"
-                    max="1440"
-                    value={settings.security.accessControl?.lockoutDuration || 30}
-                    onChange={(e) => handleInputChange('security.accessControl.lockoutDuration', parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="autoLockAccount"
-                    checked={settings.security.accessControl?.autoLockAccount || false}
-                    onChange={(e) => handleInputChange('security.accessControl.autoLockAccount', e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    disabled={!hasPermission('organizations.update')}
-                  />
-                  <label htmlFor="autoLockAccount" className="ml-2 text-sm text-gray-700">
-                    Automatically lock account after failed attempts
-                  </label>
+              
+              {/* Headquarters */}
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <Globe className="w-5 h-5 text-green-500" />
+                  <span>Headquarters</span>
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Address
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.general.headquarters?.address || ''}
+                      onChange={(e) => handleInputChange('general.headquarters.address', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Street address"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        City
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.general.headquarters?.city || ''}
+                        onChange={(e) => handleInputChange('general.headquarters.city', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="City"
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Country
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.general.headquarters?.country || ''}
+                        onChange={(e) => handleInputChange('general.headquarters.country', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Country"
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Timezone
+                    </label>
+                    <select
+                      value={settings.general.headquarters?.timezone || ''}
+                      onChange={(e) => handleInputChange('general.headquarters.timezone', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={!hasPermission('organizations.update')}
+                    >
+                      <option value="">Select Timezone</option>
+                      <option value="UTC-12:00">UTC-12:00</option>
+                      <option value="UTC-11:00">UTC-11:00</option>
+                      <option value="UTC-10:00">UTC-10:00</option>
+                      <option value="UTC-09:00">UTC-09:00</option>
+                      <option value="UTC-08:00">UTC-08:00 (PST)</option>
+                      <option value="UTC-07:00">UTC-07:00 (MST)</option>
+                      <option value="UTC-06:00">UTC-06:00 (CST)</option>
+                      <option value="UTC-05:00">UTC-05:00 (EST)</option>
+                      <option value="UTC-04:00">UTC-04:00</option>
+                      <option value="UTC-03:00">UTC-03:00</option>
+                      <option value="UTC-02:00">UTC-02:00</option>
+                      <option value="UTC-01:00">UTC-01:00</option>
+                      <option value="UTC+00:00">UTC+00:00</option>
+                      <option value="UTC+01:00">UTC+01:00</option>
+                      <option value="UTC+02:00">UTC+02:00</option>
+                      <option value="UTC+03:00">UTC+03:00</option>
+                      <option value="UTC+04:00">UTC+04:00</option>
+                      <option value="UTC+05:00">UTC+05:00</option>
+                      <option value="UTC+05:30">UTC+05:30 (IST)</option>
+                      <option value="UTC+06:00">UTC+06:00</option>
+                      <option value="UTC+07:00">UTC+07:00</option>
+                      <option value="UTC+08:00">UTC+08:00</option>
+                      <option value="UTC+09:00">UTC+09:00 (JST)</option>
+                      <option value="UTC+10:00">UTC+10:00</option>
+                      <option value="UTC+11:00">UTC+11:00</option>
+                      <option value="UTC+12:00">UTC+12:00</option>
+                    </select>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-          
-          {/* Departments */}
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Users className="w-5 h-5 text-blue-500" />
-                <span>Departments</span>
+              
+              {/* Contact Information */}
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <Mail className="w-5 h-5 text-purple-500" />
+                  <span>Contact Information</span>
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Primary Email
+                    </label>
+                    <input
+                      type="email"
+                      value={settings.general.contact?.email || ''}
+                      onChange={(e) => handleInputChange('general.contact.email', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="contact@example.com"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      value={settings.general.contact?.phone || ''}
+                      onChange={(e) => handleInputChange('general.contact.phone', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="+1-555-0123"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Emergency Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={settings.general.contact?.emergencyPhone || ''}
+                      onChange={(e) => handleInputChange('general.contact.emergencyPhone', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="+1-555-0123"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                  </div>
+                </div>
               </div>
-              {hasPermission('organizations.update') && (
-                <button
-                  onClick={handleAddDepartment}
-                  className="flex items-center space-x-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Department</span>
-                </button>
-              )}
-            </h2>
-            
-            {settings.departments.list.length === 0 ? (
-              <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-1">No Departments Configured</h3>
-                <p className="text-gray-500 mb-4">
-                  Add departments to organize your personnel and manage access control
-                </p>
-                {hasPermission('organizations.update') && (
-                  <button
-                    onClick={handleAddDepartment}
-                    className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Add First Department</span>
-                  </button>
+              
+              {/* Departments */}
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Users className="w-5 h-5 text-blue-500" />
+                    <span>Departments</span>
+                  </div>
+                  {hasPermission('organizations.update') && (
+                    <button
+                      onClick={handleAddDepartment}
+                      className="flex items-center space-x-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add Department</span>
+                    </button>
+                  )}
+                </h2>
+                
+                {settings.departments.list.length === 0 ? (
+                  <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                    <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-1">No Departments Configured</h3>
+                    <p className="text-gray-500 mb-4">
+                      Add departments to organize your personnel and manage access control
+                    </p>
+                    {hasPermission('organizations.update') && (
+                      <button
+                        onClick={handleAddDepartment}
+                        className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Add First Department</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {settings.departments.list.map((department: any) => (
+                      <div key={department.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-semibold text-gray-900">{department.name}</h4>
+                          {hasPermission('organizations.update') && (
+                            <div className="flex items-center space-x-1">
+                              <button
+                                onClick={() => handleEditDepartment(department)}
+                                className="p-1 text-gray-400 hover:text-gray-600"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDepartment(department.id)}
+                                className="p-1 text-gray-400 hover:text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">{department.description}</p>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-500">Head Count: {department.headCount}</span>
+                          <span className={`px-2 py-1 rounded-full ${
+                            department.securityLevel === 'high' ? 'bg-red-100 text-red-700' :
+                            department.securityLevel === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-green-100 text-green-700'
+                          }`}>
+                            {department.securityLevel.charAt(0).toUpperCase() + department.securityLevel.slice(1)} Security
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {settings.departments.list.map((department: any) => (
-                  <div key={department.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">{department.name}</h4>
-                      {hasPermission('organizations.update') && (
-                        <div className="flex items-center space-x-1">
-                          <button
-                            onClick={() => handleEditDepartment(department)}
-                            className="p-1 text-gray-400 hover:text-gray-600"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteDepartment(department.id)}
-                            className="p-1 text-gray-400 hover:text-red-600"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-600 mb-2">{department.description}</p>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-500">Head Count: {department.headCount}</span>
-                      <span className={`px-2 py-1 rounded-full ${
-                        department.securityLevel === 'high' ? 'bg-red-100 text-red-700' :
-                        department.securityLevel === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {department.securityLevel.charAt(0).toUpperCase() + department.securityLevel.slice(1)} Security
+            </div>
+          )}
+
+          {/* Notifications Tab */}
+          {activeTab === 'notifications' && (
+            <div className="space-y-6">
+              {/* Email Notifications */}
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <Mail className="w-5 h-5 text-blue-500" />
+                  <span>Email Notifications</span>
+                </h2>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">Enable Email Notifications</label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settings.notifications?.email?.enabled || false}
+                        onChange={(e) => handleInputChange('notifications.email.enabled', e.target.checked)}
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settings.notifications?.email?.enabled ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settings.notifications?.email?.enabled ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
                       </span>
                     </div>
                   </div>
-                ))}
+                  
+                  <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <h3 className="text-sm font-medium text-gray-700 mb-3">Notification Templates</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="welcomeEmail"
+                          checked={settings.notifications?.email?.templates?.welcome || false}
+                          onChange={(e) => handleInputChange('notifications.email.templates.welcome', e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          disabled={!hasPermission('organizations.update') || !settings.notifications?.email?.enabled}
+                        />
+                        <label htmlFor="welcomeEmail" className="ml-2 text-sm text-gray-700">
+                          Welcome emails for new users
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="passwordResetEmail"
+                          checked={settings.notifications?.email?.templates?.passwordReset || false}
+                          onChange={(e) => handleInputChange('notifications.email.templates.passwordReset', e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          disabled={!hasPermission('organizations.update') || !settings.notifications?.email?.enabled}
+                        />
+                        <label htmlFor="passwordResetEmail" className="ml-2 text-sm text-gray-700">
+                          Password reset notifications
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="securityAlertsEmail"
+                          checked={settings.notifications?.email?.templates?.securityAlerts || false}
+                          onChange={(e) => handleInputChange('notifications.email.templates.securityAlerts', e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          disabled={!hasPermission('organizations.update') || !settings.notifications?.email?.enabled}
+                        />
+                        <label htmlFor="securityAlertsEmail" className="ml-2 text-sm text-gray-700">
+                          Security alerts and incidents
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
+              
+              {/* Alert Settings */}
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <Bell className="w-5 h-5 text-orange-500" />
+                  <span>Alert Settings</span>
+                </h2>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="securityIncidents"
+                        checked={settings.notifications?.alerts?.securityIncidents || false}
+                        onChange={(e) => handleInputChange('notifications.alerts.securityIncidents', e.target.checked)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                      <label htmlFor="securityIncidents" className="ml-2 text-sm text-gray-700">
+                        Security incidents
+                      </label>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="systemMaintenance"
+                        checked={settings.notifications?.alerts?.systemMaintenance || false}
+                        onChange={(e) => handleInputChange('notifications.alerts.systemMaintenance', e.target.checked)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                      <label htmlFor="systemMaintenance" className="ml-2 text-sm text-gray-700">
+                        System maintenance
+                      </label>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="userActivity"
+                        checked={settings.notifications?.alerts?.userActivity || false}
+                        onChange={(e) => handleInputChange('notifications.alerts.userActivity', e.target.checked)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                      <label htmlFor="userActivity" className="ml-2 text-sm text-gray-700">
+                        User activity
+                      </label>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="riskAssessments"
+                        checked={settings.notifications?.alerts?.riskAssessments || false}
+                        onChange={(e) => handleInputChange('notifications.alerts.riskAssessments', e.target.checked)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                      <label htmlFor="riskAssessments" className="ml-2 text-sm text-gray-700">
+                        Risk assessments
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Threshold Settings */}
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                  <span>Alert Thresholds</span>
+                </h2>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        High Risk Score Threshold
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={settings.notifications?.thresholds?.highRiskScore || 70}
+                        onChange={(e) => handleInputChange('notifications.thresholds.highRiskScore', parseInt(e.target.value) || 70)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Alerts will be triggered when risk scores exceed this value
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Critical Risk Score Threshold
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={settings.notifications?.thresholds?.criticalRiskScore || 90}
+                        onChange={(e) => handleInputChange('notifications.thresholds.criticalRiskScore', parseInt(e.target.value) || 90)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Critical alerts will be triggered when risk scores exceed this value
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="unusualActivity"
+                        checked={settings.notifications?.thresholds?.unusualActivity || false}
+                        onChange={(e) => handleInputChange('notifications.thresholds.unusualActivity', e.target.checked)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                      <label htmlFor="unusualActivity" className="ml-2 text-sm text-gray-700">
+                        Unusual activity alerts
+                      </label>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="geopoliticalEvents"
+                        checked={settings.notifications?.thresholds?.geopoliticalEvents || false}
+                        onChange={(e) => handleInputChange('notifications.thresholds.geopoliticalEvents', e.target.checked)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                      <label htmlFor="geopoliticalEvents" className="ml-2 text-sm text-gray-700">
+                        Geopolitical event alerts
+                      </label>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="travelRisks"
+                        checked={settings.notifications?.thresholds?.travelRisks || false}
+                        onChange={(e) => handleInputChange('notifications.thresholds.travelRisks', e.target.checked)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        disabled={!hasPermission('organizations.update')}
+                      />
+                      <label htmlFor="travelRisks" className="ml-2 text-sm text-gray-700">
+                        Travel risk alerts
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Security Tab */}
+          {activeTab === 'security' && (
+            <div className="space-y-6">
+              {/* Password Policy */}
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <Lock className="w-5 h-5 text-gray-600" />
+                  <span>Password Policy</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Minimum Length
+                    </label>
+                    <input
+                      type="number"
+                      min="8"
+                      max="32"
+                      value={settings.security.passwordPolicy?.minLength || 8}
+                      onChange={(e) => handleInputChange('security.passwordPolicy.minLength', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Maximum Age (days)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="365"
+                      value={settings.security.passwordPolicy?.maxAge || 90}
+                      onChange={(e) => handleInputChange('security.passwordPolicy.maxAge', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Set to 0 for no expiration</p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Prevent Password Reuse
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="24"
+                      value={settings.security.passwordPolicy?.preventReuse || 5}
+                      onChange={(e) => handleInputChange('security.passwordPolicy.preventReuse', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Number of previous passwords to check</p>
+                  </div>
+                </div>
+                
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="requireUppercase"
+                      checked={settings.security.passwordPolicy?.requireUppercase || false}
+                      onChange={(e) => handleInputChange('security.passwordPolicy.requireUppercase', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                    <label htmlFor="requireUppercase" className="ml-2 text-sm text-gray-700">
+                      Require uppercase
+                    </label>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="requireLowercase"
+                      checked={settings.security.passwordPolicy?.requireLowercase || false}
+                      onChange={(e) => handleInputChange('security.passwordPolicy.requireLowercase', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                    <label htmlFor="requireLowercase" className="ml-2 text-sm text-gray-700">
+                      Require lowercase
+                    </label>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="requireNumbers"
+                      checked={settings.security.passwordPolicy?.requireNumbers || false}
+                      onChange={(e) => handleInputChange('security.passwordPolicy.requireNumbers', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                    <label htmlFor="requireNumbers" className="ml-2 text-sm text-gray-700">
+                      Require numbers
+                    </label>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="requireSpecialChars"
+                      checked={settings.security.passwordPolicy?.requireSpecialChars || false}
+                      onChange={(e) => handleInputChange('security.passwordPolicy.requireSpecialChars', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                    <label htmlFor="requireSpecialChars" className="ml-2 text-sm text-gray-700">
+                      Require special chars
+                    </label>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Session Policy */}
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <Clock className="w-5 h-5 text-gray-600" />
+                  <span>Session Policy</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Max Session Duration (hours)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="720"
+                      value={settings.security.sessionPolicy?.maxDuration || 24}
+                      onChange={(e) => handleInputChange('security.sessionPolicy.maxDuration', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Idle Timeout (minutes)
+                    </label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="240"
+                      value={settings.security.sessionPolicy?.idleTimeout || 30}
+                      onChange={(e) => handleInputChange('security.sessionPolicy.idleTimeout', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Max Concurrent Sessions
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={settings.security.sessionPolicy?.maxConcurrentSessions || 3}
+                      onChange={(e) => handleInputChange('security.sessionPolicy.maxConcurrentSessions', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="requireReauth"
+                      checked={settings.security.sessionPolicy?.requireReauth || false}
+                      onChange={(e) => handleInputChange('security.sessionPolicy.requireReauth', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                    <label htmlFor="requireReauth" className="ml-2 text-sm text-gray-700">
+                      Require re-authentication for sensitive actions
+                    </label>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Two-Factor Authentication */}
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <Key className="w-5 h-5 text-gray-600" />
+                  <span>Two-Factor Authentication</span>
+                </h3>
+                <div className="space-y-4">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="twoFactorRequired"
+                      checked={settings.security.twoFactorAuth?.required || false}
+                      onChange={(e) => handleInputChange('security.twoFactorAuth.required', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                    <label htmlFor="twoFactorRequired" className="ml-2 text-sm text-gray-700">
+                      Require two-factor authentication for all users
+                    </label>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="backupCodes"
+                      checked={settings.security.twoFactorAuth?.backupCodes || false}
+                      onChange={(e) => handleInputChange('security.twoFactorAuth.backupCodes', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                    <label htmlFor="backupCodes" className="ml-2 text-sm text-gray-700">
+                      Enable backup codes
+                    </label>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Allowed Methods
+                    </label>
+                    <div className="space-y-2">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="methodApp"
+                          checked={(settings.security.twoFactorAuth?.allowedMethods || []).includes('app')}
+                          onChange={(e) => {
+                            const methods = [...(settings.security.twoFactorAuth?.allowedMethods || [])];
+                            if (e.target.checked) {
+                              if (!methods.includes('app')) methods.push('app');
+                            } else {
+                              const index = methods.indexOf('app');
+                              if (index !== -1) methods.splice(index, 1);
+                            }
+                            handleInputChange('security.twoFactorAuth.allowedMethods', methods);
+                          }}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          disabled={!hasPermission('organizations.update')}
+                        />
+                        <label htmlFor="methodApp" className="ml-2 text-sm text-gray-700">
+                          Authenticator App (TOTP)
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="methodSms"
+                          checked={(settings.security.twoFactorAuth?.allowedMethods || []).includes('sms')}
+                          onChange={(e) => {
+                            const methods = [...(settings.security.twoFactorAuth?.allowedMethods || [])];
+                            if (e.target.checked) {
+                              if (!methods.includes('sms')) methods.push('sms');
+                            } else {
+                              const index = methods.indexOf('sms');
+                              if (index !== -1) methods.splice(index, 1);
+                            }
+                            handleInputChange('security.twoFactorAuth.allowedMethods', methods);
+                          }}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          disabled={!hasPermission('organizations.update')}
+                        />
+                        <label htmlFor="methodSms" className="ml-2 text-sm text-gray-700">
+                          SMS
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="methodEmail"
+                          checked={(settings.security.twoFactorAuth?.allowedMethods || []).includes('email')}
+                          onChange={(e) => {
+                            const methods = [...(settings.security.twoFactorAuth?.allowedMethods || [])];
+                            if (e.target.checked) {
+                              if (!methods.includes('email')) methods.push('email');
+                            } else {
+                              const index = methods.indexOf('email');
+                              if (index !== -1) methods.splice(index, 1);
+                            }
+                            handleInputChange('security.twoFactorAuth.allowedMethods', methods);
+                          }}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          disabled={!hasPermission('organizations.update')}
+                        />
+                        <label htmlFor="methodEmail" className="ml-2 text-sm text-gray-700">
+                          Email
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Access Control */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <Users className="w-5 h-5 text-gray-600" />
+                  <span>Access Control</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Default Role
+                    </label>
+                    <select
+                      value={settings.security.accessControl?.defaultRole || 'user'}
+                      onChange={(e) => handleInputChange('security.accessControl.defaultRole', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={!hasPermission('organizations.update')}
+                    >
+                      <option value="user">User</option>
+                      <option value="manager">Manager</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Max Failed Login Attempts
+                    </label>
+                    <input
+                      type="number"
+                      min="3"
+                      max="10"
+                      value={settings.security.accessControl?.maxFailedAttempts || 5}
+                      onChange={(e) => handleInputChange('security.accessControl.maxFailedAttempts', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Account Lockout Duration (minutes)
+                    </label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="1440"
+                      value={settings.security.accessControl?.lockoutDuration || 30}
+                      onChange={(e) => handleInputChange('security.accessControl.lockoutDuration', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="autoLockAccount"
+                      checked={settings.security.accessControl?.autoLockAccount || false}
+                      onChange={(e) => handleInputChange('security.accessControl.autoLockAccount', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                    <label htmlFor="autoLockAccount" className="ml-2 text-sm text-gray-700">
+                      Automatically lock account after failed attempts
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* OdynSentinel (AI) Tab */}
+          {activeTab === 'odynsentinel' && (
+            <div className="space-y-6">
+              <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-6 rounded-lg border border-purple-200 mb-6">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center">
+                    <Brain className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">OdynSentinel</h2>
+                    <p className="text-gray-600">AI-powered security intelligence and risk assessment</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center space-x-2">
+                    <Zap className="w-5 h-5 text-purple-600" />
+                    <span className="text-sm font-medium text-purple-800">Enable OdynSentinel AI</span>
+                  </div>
+                  <div className="relative inline-block w-12 h-6">
+                    <input
+                      type="checkbox"
+                      className="opacity-0 w-0 h-0"
+                      checked={settings.ai?.enabled !== false}
+                      onChange={(e) => handleInputChange('ai.enabled', e.target.checked)}
+                      disabled={!hasPermission('organizations.update')}
+                    />
+                    <span 
+                      className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                        settings.ai?.enabled !== false ? 'bg-purple-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span 
+                        className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                          settings.ai?.enabled !== false ? 'transform translate-x-6' : ''
+                        }`}
+                      ></span>
+                    </span>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-gray-700 mb-4">
+                  OdynSentinel uses advanced AI to analyze security data, identify patterns, and provide predictive risk assessments. 
+                  It enhances threat detection, automates risk scoring, and delivers actionable security intelligence.
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white p-4 rounded-lg border border-purple-100">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Brain className="w-4 h-4 text-purple-600" />
+                      <h3 className="font-medium text-gray-900">Risk Scoring</h3>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Automated risk assessment for assets, personnel, travel, and incidents
+                    </p>
+                  </div>
+                  
+                  <div className="bg-white p-4 rounded-lg border border-purple-100">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Zap className="w-4 h-4 text-purple-600" />
+                      <h3 className="font-medium text-gray-900">Threat Detection</h3>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Identify potential security threats before they materialize
+                    </p>
+                  </div>
+                  
+                  <div className="bg-white p-4 rounded-lg border border-purple-100">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <AlertTriangle className="w-4 h-4 text-purple-600" />
+                      <h3 className="font-medium text-gray-900">Mitigation Recommendations</h3>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      AI-generated security recommendations and mitigation strategies
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* AI Usage Monitoring */}
+              <AIUsageMonitoring />
+            </div>
+          )}
         </div>
       </div>
 
