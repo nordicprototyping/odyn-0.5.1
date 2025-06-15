@@ -32,10 +32,11 @@ const Modal: React.FC<ModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className={`bg-white rounded-xl shadow-xl ${sizeClasses[size]} w-full max-h-[90vh] overflow-y-auto`}>
-        {title && (
+        {/* Header - show if there's a title or if showCloseButton is true */}
+        {(title || showCloseButton) && (
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+              {title && <h2 className="text-xl font-bold text-gray-900">{title}</h2>}
               {showCloseButton && (
                 <button
                   onClick={onClose}
@@ -48,7 +49,8 @@ const Modal: React.FC<ModalProps> = ({
           </div>
         )}
         
-        <div className={title ? '' : 'pt-6'}>
+        {/* Content - add padding only if there's no header */}
+        <div className={!title && !showCloseButton ? 'pt-6' : ''}>
           {children}
         </div>
       </div>
