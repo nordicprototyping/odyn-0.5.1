@@ -21,7 +21,8 @@ import {
   Clock,
   Lock,
   Key,
-  Users
+  Users,
+  AlertTriangle
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
