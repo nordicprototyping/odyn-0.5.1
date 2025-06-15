@@ -7,6 +7,9 @@ import TimelineBuilder from './timeline/TimelineBuilder';
 import { aiService } from '../services/aiService';
 import MitigationSelector from './MitigationSelector';
 import { AppliedMitigation } from '../types/mitigation';
+import { useFormState } from '../hooks/useFormState';
+import { countries, clearanceLevels } from '../utils/constants';
+import { useDepartments } from '../hooks/useDepartments';
 
 type TravelPlan = Database['public']['Tables']['travel_plans']['Row'];
 type TravelPlanInsert = Database['public']['Tables']['travel_plans']['Insert'];
@@ -25,13 +28,14 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
   const [timelineBlocks, setTimelineBlocks] = useState<TimelineBlock[]>([]);
   const [aiScoring, setAiScoring] = useState(false);
   const [mitigations, setMitigations] = useState<AppliedMitigation[]>([]);
+  const { departments } = useDepartments();
   
   const { user, profile } = useAuth();
 
   const isEditMode = !!travelPlanToEdit;
 
   // Initialize form data based on whether we're editing or creating
-  const [formData, setFormData] = useState({
+  const { formData, updateFormData, setFormData } = useFormState({
     traveler_name: profile?.full_name || '',
     traveler_employee_id: '',
     traveler_department: profile?.department || '',
@@ -104,7 +108,7 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
         risk_assessment: travelPlanToEdit.risk_assessment as any
       });
     }
-  }, [travelPlanToEdit]);
+  }, [travelPlanToEdit, setFormData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,241 +282,6 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
       setLoading(false);
     }
   };
-
-  const updateFormData = (path: string, value: any) => {
-    setFormData(prev => {
-      const newData = { ...prev };
-      const keys = path.split('.');
-      let current = newData;
-      
-      for (let i = 0; i < keys.length - 1; i++) {
-        current = current[keys[i]];
-      }
-      
-      current[keys[keys.length - 1]] = value;
-      return newData;
-    });
-  };
-
-const countries = [
-  'Afghanistan',
-  'Albania',
-  'Algeria',
-  'Andorra',
-  'Angola',
-  'Antigua and Barbuda',
-  'Argentina',
-  'Armenia',
-  'Australia',
-  'Austria',
-  'Azerbaijan',
-  'Bahamas',
-  'Bahrain',
-  'Bangladesh',
-  'Barbados',
-  'Belarus',
-  'Belgium',
-  'Belize',
-  'Benin',
-  'Bhutan',
-  'Bolivia',
-  'Bosnia and Herzegovina',
-  'Botswana',
-  'Brazil',
-  'Brunei',
-  'Bulgaria',
-  'Burkina Faso',
-  'Burundi',
-  'Cabo Verde',
-  'Cambodia',
-  'Cameroon',
-  'Canada',
-  'Central African Republic',
-  'Chad',
-  'Chile',
-  'China',
-  'Colombia',
-  'Comoros',
-  'Congo (Brazzaville)',
-  'Congo (Kinshasa)',
-  'Costa Rica',
-  'Croatia',
-  'Cuba',
-  'Cyprus',
-  'Czech Republic',
-  'Denmark',
-  'Djibouti',
-  'Dominica',
-  'Dominican Republic',
-  'Ecuador',
-  'Egypt',
-  'El Salvador',
-  'Equatorial Guinea',
-  'Eritrea',
-  'Estonia',
-  'Eswatini',
-  'Ethiopia',
-  'Fiji',
-  'Finland',
-  'France',
-  'Gabon',
-  'Gambia',
-  'Georgia',
-  'Germany',
-  'Ghana',
-  'Greece',
-  'Grenada',
-  'Guatemala',
-  'Guinea',
-  'Guinea-Bissau',
-  'Guyana',
-  'Haiti',
-  'Honduras',
-  'Hungary',
-  'Iceland',
-  'India',
-  'Indonesia',
-  'Iran',
-  'Iraq',
-  'Ireland',
-  'Israel',
-  'Italy',
-  'Ivory Coast',
-  'Jamaica',
-  'Japan',
-  'Jordan',
-  'Kazakhstan',
-  'Kenya',
-  'Kiribati',
-  'Kosovo',
-  'Kuwait',
-  'Kyrgyzstan',
-  'Laos',
-  'Latvia',
-  'Lebanon',
-  'Lesotho',
-  'Liberia',
-  'Libya',
-  'Liechtenstein',
-  'Lithuania',
-  'Luxembourg',
-  'Madagascar',
-  'Malawi',
-  'Malaysia',
-  'Maldives',
-  'Mali',
-  'Malta',
-  'Marshall Islands',
-  'Mauritania',
-  'Mauritius',
-  'Mexico',
-  'Micronesia',
-  'Moldova',
-  'Monaco',
-  'Mongolia',
-  'Montenegro',
-  'Morocco',
-  'Mozambique',
-  'Myanmar',
-  'Namibia',
-  'Nauru',
-  'Nepal',
-  'Netherlands',
-  'New Zealand',
-  'Nicaragua',
-  'Niger',
-  'Nigeria',
-  'North Korea',
-  'North Macedonia',
-  'Norway',
-  'Oman',
-  'Pakistan',
-  'Palau',
-  'Palestine',
-  'Panama',
-  'Papua New Guinea',
-  'Paraguay',
-  'Peru',
-  'Philippines',
-  'Poland',
-  'Portugal',
-  'Qatar',
-  'Romania',
-  'Russia',
-  'Rwanda',
-  'Saint Kitts and Nevis',
-  'Saint Lucia',
-  'Saint Vincent and the Grenadines',
-  'Samoa',
-  'San Marino',
-  'Sao Tome and Principe',
-  'Saudi Arabia',
-  'Senegal',
-  'Serbia',
-  'Seychelles',
-  'Sierra Leone',
-  'Singapore',
-  'Slovakia',
-  'Slovenia',
-  'Solomon Islands',
-  'Somalia',
-  'South Africa',
-  'South Korea',
-  'South Sudan',
-  'Spain',
-  'Sri Lanka',
-  'Sudan',
-  'Suriname',
-  'Sweden',
-  'Switzerland',
-  'Syria',
-  'Taiwan',
-  'Tajikistan',
-  'Tanzania',
-  'Thailand',
-  'Timor-Leste',
-  'Togo',
-  'Tonga',
-  'Trinidad and Tobago',
-  'Tunisia',
-  'Turkey',
-  'Turkmenistan',
-  'Tuvalu',
-  'Uganda',
-  'Ukraine',
-  'United Arab Emirates',
-  'United Kingdom',
-  'United States',
-  'Uruguay',
-  'Uzbekistan',
-  'Vanuatu',
-  'Vatican City',
-  'Venezuela',
-  'Vietnam',
-  'Yemen',
-  'Zambia',
-  'Zimbabwe'
-];
-
-  const departments = [
-    'Security Operations',
-    'Field Operations',
-    'Risk Analysis',
-    'Transport Security',
-    'IT Security',
-    'Cyber Intelligence',
-    'Executive',
-    'HR',
-    'Operations',
-    'Finance'
-  ];
-
-  const clearanceLevels = [
-    'Unclassified',
-    'Confidential',
-    'Secret',
-    'Top Secret'
-  ];
 
   const handleTimelineChange = (blocks: TimelineBlock[]) => {
     setTimelineBlocks(blocks);

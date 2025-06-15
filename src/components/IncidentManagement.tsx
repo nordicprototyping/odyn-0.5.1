@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { useFormState } from '../hooks/useFormState';
+import { useDepartments } from '../hooks/useDepartments';
 
 type IncidentReport = Database['public']['Tables']['incident_reports']['Row'];
 type IncidentInsert = Database['public']['Tables']['incident_reports']['Insert'];
@@ -45,8 +47,9 @@ const IncidentManagement: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const { user, profile, hasPermission } = useAuth();
+  const { departments } = useDepartments();
 
-  const [formData, setFormData] = useState({
+  const { formData, updateFormData, resetFormData } = useFormState({
     title: '',
     description: '',
     date_time: '',
@@ -55,12 +58,10 @@ const IncidentManagement: React.FC = () => {
     department: '',
     involved_parties: '',
     immediate_actions: '',
-    reporter_name: '',
-    reporter_email: '',
-    reporter_phone: ''
+    reporter_name: profile?.full_name || '',
+    reporter_email: user?.email || '',
+    reporter_phone: profile?.phone || ''
   });
-
-  const departments = ['IT Security', 'Physical Security', 'Data Security', 'HR', 'Operations', 'Executive'];
 
   // Add console log to track rendering and state
   console.log('IncidentManagement rendering, showReportForm:', showReportForm);
@@ -175,6 +176,7 @@ const IncidentManagement: React.FC = () => {
         reporter_email: formData.reporter_email,
         reporter_phone: formData.reporter_phone || null,
         status: 'Open',
+        organization_id: profile?.organization_id || '',
         timeline: [
           {
             timestamp: new Date().toISOString(),
@@ -197,19 +199,7 @@ const IncidentManagement: React.FC = () => {
       setShowReportForm(false);
       
       // Reset form
-      setFormData({
-        title: '',
-        description: '',
-        date_time: '',
-        severity: 'Medium',
-        location: '',
-        department: '',
-        involved_parties: '',
-        immediate_actions: '',
-        reporter_name: '',
-        reporter_email: '',
-        reporter_phone: ''
-      });
+      resetFormData();
     } catch (err) {
       console.error('Error submitting incident:', err);
       setError(err instanceof Error ? err.message : 'Failed to submit incident report');
@@ -552,7 +542,7 @@ const IncidentManagement: React.FC = () => {
                     type="text"
                     required
                     value={formData.title}
-                    onChange={(e) => setFormData({...formData, title: e.target.value})}
+                    onChange={(e) => updateFormData('title', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Brief description of the incident"
                   />
@@ -566,7 +556,7 @@ const IncidentManagement: React.FC = () => {
                     required
                     rows={4}
                     value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                    onChange={(e) => updateFormData('description', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Provide detailed information about what happened..."
                   />
@@ -580,7 +570,7 @@ const IncidentManagement: React.FC = () => {
                     type="datetime-local"
                     required
                     value={formData.date_time}
-                    onChange={(e) => setFormData({...formData, date_time: e.target.value})}
+                    onChange={(e) => updateFormData('date_time', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
@@ -592,7 +582,7 @@ const IncidentManagement: React.FC = () => {
                   <select
                     required
                     value={formData.severity}
-                    onChange={(e) => setFormData({...formData, severity: e.target.value as any})}
+                    onChange={(e) => updateFormData('severity', e.target.value as any)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="Low">Low</option>
@@ -610,7 +600,7 @@ const IncidentManagement: React.FC = () => {
                     type="text"
                     required
                     value={formData.location}
-                    onChange={(e) => setFormData({...formData, location: e.target.value})}
+                    onChange={(e) => updateFormData('location', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Specific location where incident occurred"
                   />
@@ -623,7 +613,7 @@ const IncidentManagement: React.FC = () => {
                   <select
                     required
                     value={formData.department}
-                    onChange={(e) => setFormData({...formData, department: e.target.value})}
+                    onChange={(e) => updateFormData('department', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="">Select Department</option>
@@ -640,7 +630,7 @@ const IncidentManagement: React.FC = () => {
                   <input
                     type="text"
                     value={formData.involved_parties}
-                    onChange={(e) => setFormData({...formData, involved_parties: e.target.value})}
+                    onChange={(e) => updateFormData('involved_parties', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Names of people involved (comma separated)"
                   />
@@ -653,7 +643,7 @@ const IncidentManagement: React.FC = () => {
                   <textarea
                     rows={3}
                     value={formData.immediate_actions}
-                    onChange={(e) => setFormData({...formData, immediate_actions: e.target.value})}
+                    onChange={(e) => updateFormData('immediate_actions', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Describe any immediate actions taken to address the incident..."
                   />
@@ -671,7 +661,7 @@ const IncidentManagement: React.FC = () => {
                       type="text"
                       required
                       value={formData.reporter_name}
-                      onChange={(e) => setFormData({...formData, reporter_name: e.target.value})}
+                      onChange={(e) => updateFormData('reporter_name', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder={profile?.full_name || ''}
                     />
@@ -685,7 +675,7 @@ const IncidentManagement: React.FC = () => {
                       type="email"
                       required
                       value={formData.reporter_email}
-                      onChange={(e) => setFormData({...formData, reporter_email: e.target.value})}
+                      onChange={(e) => updateFormData('reporter_email', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder={user?.email || ''}
                     />
@@ -698,7 +688,7 @@ const IncidentManagement: React.FC = () => {
                     <input
                       type="tel"
                       value={formData.reporter_phone}
-                      onChange={(e) => setFormData({...formData, reporter_phone: e.target.value})}
+                      onChange={(e) => updateFormData('reporter_phone', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
