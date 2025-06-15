@@ -54,6 +54,16 @@ export function useAssets() {
       }
 
       setAssets(prev => [...(data || []), ...prev]);
+      
+      // Log the asset creation in audit logs
+      if (data?.[0]) {
+        await logAuditEvent('asset_created', data[0].id, { 
+          asset_name: assetData.name,
+          asset_type: assetData.type,
+          asset_location: assetData.location
+        });
+      }
+      
       return data?.[0] || null;
     } catch (err) {
       console.error('Error adding asset:', err);
@@ -80,6 +90,17 @@ export function useAssets() {
       }
 
       setAssets(prev => prev.map(asset => asset.id === id ? (data?.[0] || asset) : asset));
+      
+      // Log the asset update in audit logs
+      if (data?.[0]) {
+        await logAuditEvent('asset_updated', data[0].id, { 
+          asset_name: assetData.name || data[0].name,
+          asset_type: assetData.type || data[0].type,
+          asset_status: assetData.status || data[0].status,
+          asset_location: assetData.location || data[0].location
+        });
+      }
+      
       return data?.[0] || null;
     } catch (err) {
       console.error('Error updating asset:', err);
@@ -94,6 +115,13 @@ export function useAssets() {
     try {
       setLoading(true);
       setError(null);
+      
+      // Get asset details before deletion for audit log
+      const { data: assetToDelete } = await supabase
+        .from('assets')
+        .select('name, type')
+        .eq('id', id)
+        .single();
 
       const { error } = await supabase
         .from('assets')
@@ -105,6 +133,15 @@ export function useAssets() {
       }
 
       setAssets(prev => prev.filter(asset => asset.id !== id));
+      
+      // Log the asset deletion in audit logs
+      if (assetToDelete) {
+        await logAuditEvent('asset_deleted', id, { 
+          asset_name: assetToDelete.name,
+          asset_type: assetToDelete.type,
+          deleted_at: new Date().toISOString()
+        });
+      }
     } catch (err) {
       console.error('Error deleting asset:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete asset');

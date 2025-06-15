@@ -52,7 +52,8 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
       items: [
         { id: 'admin-users', label: 'User Management', icon: Users, path: '/admin/users' },
         { id: 'admin-invitations', label: 'Invitations', icon: Mail, path: '/admin/invitations' },
-        { id: 'admin-org-settings', label: 'Organization Settings', icon: Settings, path: '/admin/organization-settings' }
+        { id: 'admin-org-settings', label: 'Organization Settings', icon: Settings, path: '/admin/organization-settings' },
+        { id: 'admin-audit-logs', label: 'Audit Logs', icon: FileText, path: '/admin/audit-logs' }
       ]
     },
     // Super Admin Tools Section

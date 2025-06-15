@@ -54,6 +54,16 @@ export function usePersonnel() {
       }
 
       setPersonnel(prev => [...(data || []), ...prev]);
+      
+      // Log the personnel creation in audit logs
+      if (data?.[0]) {
+        await logAuditEvent('personnel_created', data[0].id, { 
+          personnel_name: personnelData.name,
+          employee_id: personnelData.employee_id,
+          department: personnelData.department
+        });
+      }
+      
       return data?.[0] || null;
     } catch (err) {
       console.error('Error adding personnel:', err);
@@ -80,6 +90,17 @@ export function usePersonnel() {
       }
 
       setPersonnel(prev => prev.map(person => person.id === id ? (data?.[0] || person) : person));
+      
+      // Log the personnel update in audit logs
+      if (data?.[0]) {
+        await logAuditEvent('personnel_updated', data[0].id, { 
+          personnel_name: personnelData.name || data[0].name,
+          employee_id: personnelData.employee_id || data[0].employee_id,
+          department: personnelData.department || data[0].department,
+          status: personnelData.status || data[0].status
+        });
+      }
+      
       return data?.[0] || null;
     } catch (err) {
       console.error('Error updating personnel:', err);
@@ -94,6 +115,13 @@ export function usePersonnel() {
     try {
       setLoading(true);
       setError(null);
+      
+      // Get personnel details before deletion for audit log
+      const { data: personnelToDelete } = await supabase
+        .from('personnel_details')
+        .select('name, employee_id')
+        .eq('id', id)
+        .single();
 
       const { error } = await supabase
         .from('personnel_details')
@@ -105,6 +133,15 @@ export function usePersonnel() {
       }
 
       setPersonnel(prev => prev.filter(person => person.id !== id));
+      
+      // Log the personnel deletion in audit logs
+      if (personnelToDelete) {
+        await logAuditEvent('personnel_deleted', id, { 
+          personnel_name: personnelToDelete.name,
+          employee_id: personnelToDelete.employee_id,
+          deleted_at: new Date().toISOString()
+        });
+      }
     } catch (err) {
       console.error('Error deleting personnel:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete personnel');

@@ -54,6 +54,17 @@ export function useTravelPlans() {
       }
 
       setTravelPlans(prev => [...(data || []), ...prev]);
+      
+      // Log the travel plan creation in audit logs
+      if (data?.[0]) {
+        await logAuditEvent('travel_plan_created', data[0].id, { 
+          traveler_name: travelPlanData.traveler_name,
+          destination: travelPlanData.destination,
+          departure_date: travelPlanData.departure_date,
+          status: travelPlanData.status || 'pending'
+        });
+      }
+      
       return data?.[0] || null;
     } catch (err) {
       console.error('Error adding travel plan:', err);
@@ -80,6 +91,17 @@ export function useTravelPlans() {
       }
 
       setTravelPlans(prev => prev.map(plan => plan.id === id ? (data?.[0] || plan) : plan));
+      
+      // Log the travel plan update in audit logs
+      if (data?.[0]) {
+        await logAuditEvent('travel_plan_updated', data[0].id, { 
+          traveler_name: travelPlanData.traveler_name || data[0].traveler_name,
+          destination: travelPlanData.destination || data[0].destination,
+          status: travelPlanData.status || data[0].status,
+          updated_fields: Object.keys(travelPlanData).filter(k => k !== 'id' && k !== 'organization_id')
+        });
+      }
+      
       return data?.[0] || null;
     } catch (err) {
       console.error('Error updating travel plan:', err);
@@ -94,6 +116,13 @@ export function useTravelPlans() {
     try {
       setLoading(true);
       setError(null);
+      
+      // Get travel plan details before deletion for audit log
+      const { data: planToDelete } = await supabase
+        .from('travel_plans')
+        .select('traveler_name, destination')
+        .eq('id', id)
+        .single();
 
       const { error } = await supabase
         .from('travel_plans')
@@ -105,6 +134,15 @@ export function useTravelPlans() {
       }
 
       setTravelPlans(prev => prev.filter(plan => plan.id !== id));
+      
+      // Log the travel plan deletion in audit logs
+      if (planToDelete) {
+        await logAuditEvent('travel_plan_deleted', id, { 
+          traveler_name: planToDelete.traveler_name,
+          destination: planToDelete.destination,
+          deleted_at: new Date().toISOString()
+        });
+      }
     } catch (err) {
       console.error('Error deleting travel plan:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete travel plan');

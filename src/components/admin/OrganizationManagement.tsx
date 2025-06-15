@@ -37,7 +37,7 @@ const OrganizationManagement: React.FC = () => {
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
 
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
 
   useEffect(() => {
     fetchOrganizations();
@@ -72,16 +72,25 @@ const OrganizationManagement: React.FC = () => {
     setError(null);
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('organizations')
         .insert([{
           name: formData.name,
           plan_type: formData.plan_type,
           settings: formData.settings
-        }]);
+        }])
+        .select();
 
       if (error) {
         throw error;
+      }
+
+      // Log the organization creation in audit logs
+      if (data?.[0]) {
+        await logAuditEvent('organization_created', data[0].id, {
+          org_name: formData.name,
+          plan_type: formData.plan_type
+        });
       }
 
       await fetchOrganizations();
@@ -103,17 +112,44 @@ const OrganizationManagement: React.FC = () => {
     setError(null);
 
     try {
-      const { error } = await supabase
+      // Get current organization data for comparison
+      const { data: currentOrg } = await supabase
+        .from('organizations')
+        .select('name, plan_type')
+        .eq('id', selectedOrganization.id)
+        .single();
+      
+      const { data, error } = await supabase
         .from('organizations')
         .update({
           name: formData.name,
           plan_type: formData.plan_type,
           settings: formData.settings
         })
-        .eq('id', selectedOrganization.id);
+        .eq('id', selectedOrganization.id)
+        .select();
 
       if (error) {
         throw error;
+      }
+
+      // Log the organization update in audit logs
+      if (data?.[0]) {
+        const changes: Record<string, any> = {};
+        
+        if (currentOrg) {
+          if (formData.name !== currentOrg.name) {
+            changes.name = { from: currentOrg.name, to: formData.name };
+          }
+          if (formData.plan_type !== currentOrg.plan_type) {
+            changes.plan_type = { from: currentOrg.plan_type, to: formData.plan_type };
+          }
+        }
+        
+        await logAuditEvent('organization_updated', data[0].id, {
+          org_name: formData.name,
+          changes: Object.keys(changes).length > 0 ? changes : 'No significant changes'
+        });
       }
 
       await fetchOrganizations();
@@ -134,6 +170,13 @@ const OrganizationManagement: React.FC = () => {
     }
 
     try {
+      // Get organization details before deletion for audit log
+      const { data: orgToDelete } = await supabase
+        .from('organizations')
+        .select('name, plan_type')
+        .eq('id', organizationId)
+        .single();
+      
       const { error } = await supabase
         .from('organizations')
         .delete()
@@ -143,10 +186,40 @@ const OrganizationManagement: React.FC = () => {
         throw error;
       }
 
+      // Log the organization deletion in audit logs
+      if (orgToDelete) {
+        await logAuditEvent('organization_deleted', organizationId, {
+          org_name: orgToDelete.name,
+          plan_type: orgToDelete.plan_type,
+          deleted_at: new Date().toISOString()
+        });
+      }
+
       await fetchOrganizations();
     } catch (err) {
       console.error('Error deleting organization:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete organization');
+    }
+  };
+
+  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
+    try {
+      const { error } = await supabase.from('audit_logs').insert({
+        user_id: user?.id || null,
+        organization_id: resourceId || null, // For organization operations, use the org ID as both resource and organization
+        action,
+        resource_type: 'organization',
+        resource_id: resourceId,
+        details,
+        ip_address: null,
+        user_agent: navigator.userAgent
+      });
+
+      if (error) {
+        console.error('Error logging audit event:', error);
+      }
+    } catch (error) {
+      console.error('Unexpected error logging audit event:', error);
     }
   };
 

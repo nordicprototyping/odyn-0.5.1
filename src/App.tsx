@@ -17,6 +17,7 @@ import IncidentManagement from './components/IncidentManagement';
 import AssetSecurityDashboard from './components/AssetSecurityDashboard';
 import MitigationsPage from './pages/MitigationsPage';
 import JoinOrganizationPage from './pages/JoinOrganizationPage';
+import AuditLogViewer from './components/admin/AuditLogViewer';
 import './index.css';
 
 function App() {
@@ -179,6 +180,16 @@ function App() {
               <ProtectedRoute requiredPermission="organizations.read">
                 <MainLayout>
                   <OrganizationManagement />
+                </MainLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/audit-logs" 
+            element={
+              <ProtectedRoute requiredPermission="audit.read">
+                <MainLayout>
+                  <AuditLogViewer />
                 </MainLayout>
               </ProtectedRoute>
             } 

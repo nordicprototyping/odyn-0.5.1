@@ -54,6 +54,17 @@ export function useIncidents() {
       }
 
       setIncidents(prev => [...(data || []), ...prev]);
+      
+      // Log the incident creation in audit logs
+      if (data?.[0]) {
+        await logAuditEvent('incident_created', data[0].id, { 
+          incident_title: incidentData.title,
+          incident_severity: incidentData.severity,
+          incident_location: incidentData.location,
+          incident_department: incidentData.department
+        });
+      }
+      
       return data?.[0] || null;
     } catch (err) {
       console.error('Error adding incident:', err);
@@ -68,6 +79,13 @@ export function useIncidents() {
     try {
       setLoading(true);
       setError(null);
+      
+      // Get current incident data for comparison
+      const { data: currentIncident } = await supabase
+        .from('incident_reports')
+        .select('status, severity')
+        .eq('id', id)
+        .single();
 
       const { data, error } = await supabase
         .from('incident_reports')
@@ -80,6 +98,23 @@ export function useIncidents() {
       }
 
       setIncidents(prev => prev.map(incident => incident.id === id ? (data?.[0] || incident) : incident));
+      
+      // Log the incident update in audit logs
+      if (data?.[0]) {
+        const statusChanged = currentIncident && currentIncident.status !== incidentData.status;
+        const severityChanged = currentIncident && currentIncident.severity !== incidentData.severity;
+        
+        await logAuditEvent('incident_updated', data[0].id, { 
+          incident_title: incidentData.title || data[0].title,
+          incident_severity: incidentData.severity || data[0].severity,
+          incident_status: incidentData.status || data[0].status,
+          status_changed: statusChanged,
+          severity_changed: severityChanged,
+          previous_status: currentIncident?.status,
+          previous_severity: currentIncident?.severity
+        });
+      }
+      
       return data?.[0] || null;
     } catch (err) {
       console.error('Error updating incident:', err);
@@ -94,6 +129,13 @@ export function useIncidents() {
     try {
       setLoading(true);
       setError(null);
+      
+      // Get incident details before deletion for audit log
+      const { data: incidentToDelete } = await supabase
+        .from('incident_reports')
+        .select('title, severity, status')
+        .eq('id', id)
+        .single();
 
       const { error } = await supabase
         .from('incident_reports')
@@ -105,6 +147,16 @@ export function useIncidents() {
       }
 
       setIncidents(prev => prev.filter(incident => incident.id !== id));
+      
+      // Log the incident deletion in audit logs
+      if (incidentToDelete) {
+        await logAuditEvent('incident_deleted', id, { 
+          incident_title: incidentToDelete.title,
+          incident_severity: incidentToDelete.severity,
+          incident_status: incidentToDelete.status,
+          deleted_at: new Date().toISOString()
+        });
+      }
     } catch (err) {
       console.error('Error deleting incident:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete incident');

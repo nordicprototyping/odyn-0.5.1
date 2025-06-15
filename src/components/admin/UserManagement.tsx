@@ -1,5 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Search, Filter, Edit, Trash2, Shield, Mail, Phone, Calendar, AlertCircle, CheckCircle, XCircle, Crown, UserCheck, Settings } from 'lucide-react';
+import {
+  Users,
+  Plus,
+  Search,
+  Filter,
+  Edit,
+  Trash2,
+  Shield,
+  Mail,
+  Phone,
+  Calendar,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  Crown,
+  UserCheck,
+  Settings
+} from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, Database } from '../../lib/supabase';
 
@@ -24,7 +41,7 @@ const UserManagement: React.FC = () => {
     phone: ''
   });
 
-  const { hasPermission, profile } = useAuth();
+  const { hasPermission, profile, user } = useAuth();
 
   useEffect(() => {
     fetchUsers();
@@ -117,6 +134,13 @@ const UserManagement: React.FC = () => {
     if (!selectedUser) return;
 
     try {
+      // Get current user data for comparison
+      const { data: currentUser } = await supabase
+        .from('user_profiles')
+        .select('role, department, phone')
+        .eq('id', selectedUser.id)
+        .single();
+      
       const { error } = await supabase
         .from('user_profiles')
         .update({
@@ -128,6 +152,27 @@ const UserManagement: React.FC = () => {
         .eq('id', selectedUser.id);
 
       if (error) throw error;
+
+      // Log the user profile update in audit logs
+      const changes: Record<string, any> = {};
+      
+      if (currentUser) {
+        if (editForm.role !== currentUser.role) {
+          changes.role = { from: currentUser.role, to: editForm.role };
+        }
+        if (editForm.department !== currentUser.department) {
+          changes.department = { from: currentUser.department, to: editForm.department };
+        }
+        if (editForm.phone !== currentUser.phone) {
+          changes.phone = { from: currentUser.phone, to: editForm.phone };
+        }
+      }
+      
+      await logAuditEvent('user_profile_updated', selectedUser.id, {
+        target_user_id: selectedUser.user_id,
+        target_user_name: selectedUser.full_name,
+        changes: Object.keys(changes).length > 0 ? changes : 'No significant changes'
+      });
 
       await fetchUsers();
       setShowEditModal(false);
@@ -150,6 +195,23 @@ const UserManagement: React.FC = () => {
         .eq('id', userId);
 
       if (error) throw error;
+      
+      // Get user details for audit log
+      const { data: lockedUser } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name')
+        .eq('id', userId)
+        .single();
+      
+      // Log the user account lock in audit logs
+      if (lockedUser) {
+        await logAuditEvent('user_account_locked', userId, {
+          target_user_id: lockedUser.user_id,
+          target_user_name: lockedUser.full_name,
+          lock_duration: '24 hours',
+          lock_until: lockUntil.toISOString()
+        });
+      }
 
       await fetchUsers();
     } catch (error) {
@@ -159,6 +221,13 @@ const UserManagement: React.FC = () => {
 
   const handleUnlockUser = async (userId: string) => {
     try {
+      // Get user details for audit log before update
+      const { data: lockedUser } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name, account_locked_until')
+        .eq('id', userId)
+        .single();
+      
       const { error } = await supabase
         .from('user_profiles')
         .update({
@@ -169,10 +238,45 @@ const UserManagement: React.FC = () => {
         .eq('id', userId);
 
       if (error) throw error;
+      
+      // Log the user account unlock in audit logs
+      if (lockedUser) {
+        await logAuditEvent('user_account_unlocked', userId, {
+          target_user_id: lockedUser.user_id,
+          target_user_name: lockedUser.full_name,
+          previous_lock_until: lockedUser.account_locked_until
+        });
+      }
 
       await fetchUsers();
     } catch (error) {
       console.error('Error unlocking user:', error);
+    }
+  };
+
+  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
+    if (!profile?.organization_id) {
+      console.warn('Cannot log audit event: no organization ID available');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase.from('audit_logs').insert({
+        user_id: user?.id || null,
+        organization_id: profile.organization_id,
+        action,
+        resource_type: 'user_profile',
+        resource_id: resourceId,
+        details,
+        ip_address: null,
+        user_agent: navigator.userAgent
+      });
+
+      if (error) {
+        console.error('Error logging audit event:', error);
+      }
+    } catch (error) {
+      console.error('Unexpected error logging audit event:', error);
     }
   };
 

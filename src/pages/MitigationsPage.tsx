@@ -34,7 +34,7 @@ const MitigationsPage: React.FC = () => {
   const [editingMitigation, setEditingMitigation] = useState<Mitigation | null>(null);
   const [expandedMitigation, setExpandedMitigation] = useState<string | null>(null);
 
-  const { hasPermission, profile } = useAuth();
+  const { hasPermission, profile, user } = useAuth();
 
   useEffect(() => {
     fetchMitigations();
@@ -89,6 +89,16 @@ const MitigationsPage: React.FC = () => {
       setShowAddForm(false);
       setSuccess('Mitigation created successfully');
       
+      // Log the mitigation creation in audit logs
+      if (data?.[0]) {
+        await logAuditEvent('mitigation_created', data[0].id, {
+          mitigation_name: formData.name,
+          category: formData.category,
+          is_custom: true,
+          risk_reduction_score: formData.default_risk_reduction_score
+        });
+      }
+      
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -104,6 +114,13 @@ const MitigationsPage: React.FC = () => {
       setLoading(true);
       setError(null);
       
+      // Get current mitigation data for comparison
+      const { data: currentMitigation } = await supabase
+        .from('mitigations')
+        .select('name, category, default_risk_reduction_score')
+        .eq('id', id)
+        .single();
+      
       const { data, error } = await supabase
         .from('mitigations')
         .update(updates)
@@ -115,6 +132,32 @@ const MitigationsPage: React.FC = () => {
       setMitigations(prev => prev.map(m => m.id === id ? (data?.[0] || m) : m));
       setEditingMitigation(null);
       setSuccess('Mitigation updated successfully');
+      
+      // Log the mitigation update in audit logs
+      if (data?.[0]) {
+        const changes: Record<string, any> = {};
+        
+        if (currentMitigation) {
+          if (updates.name && updates.name !== currentMitigation.name) {
+            changes.name = { from: currentMitigation.name, to: updates.name };
+          }
+          if (updates.category && updates.category !== currentMitigation.category) {
+            changes.category = { from: currentMitigation.category, to: updates.category };
+          }
+          if (updates.default_risk_reduction_score && 
+              updates.default_risk_reduction_score !== currentMitigation.default_risk_reduction_score) {
+            changes.risk_reduction_score = { 
+              from: currentMitigation.default_risk_reduction_score, 
+              to: updates.default_risk_reduction_score 
+            };
+          }
+        }
+        
+        await logAuditEvent('mitigation_updated', data[0].id, {
+          mitigation_name: updates.name || (currentMitigation?.name || 'Unknown'),
+          changes: Object.keys(changes).length > 0 ? changes : 'No significant changes'
+        });
+      }
       
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
@@ -135,6 +178,13 @@ const MitigationsPage: React.FC = () => {
       setLoading(true);
       setError(null);
       
+      // Get mitigation details before deletion for audit log
+      const { data: mitigationToDelete } = await supabase
+        .from('mitigations')
+        .select('name, category')
+        .eq('id', id)
+        .single();
+      
       const { error } = await supabase
         .from('mitigations')
         .delete()
@@ -145,6 +195,15 @@ const MitigationsPage: React.FC = () => {
       setMitigations(prev => prev.filter(m => m.id !== id));
       setSuccess('Mitigation deleted successfully');
       
+      // Log the mitigation deletion in audit logs
+      if (mitigationToDelete) {
+        await logAuditEvent('mitigation_deleted', id, {
+          mitigation_name: mitigationToDelete.name,
+          category: mitigationToDelete.category,
+          deleted_at: new Date().toISOString()
+        });
+      }
+      
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -152,6 +211,32 @@ const MitigationsPage: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Failed to delete mitigation');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
+    if (!profile?.organization_id) {
+      console.warn('Cannot log audit event: no organization ID available');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase.from('audit_logs').insert({
+        user_id: user?.id || null,
+        organization_id: profile.organization_id,
+        action,
+        resource_type: 'mitigation',
+        resource_id: resourceId,
+        details,
+        ip_address: null,
+        user_agent: navigator.userAgent
+      });
+
+      if (error) {
+        console.error('Error logging audit event:', error);
+      }
+    } catch (error) {
+      console.error('Unexpected error logging audit event:', error);
     }
   };
 
