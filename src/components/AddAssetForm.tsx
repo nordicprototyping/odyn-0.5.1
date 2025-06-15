@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { X, Building, MapPin, Shield, Users, Settings, AlertTriangle, Save, Loader2, Brain } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Building, MapPin, Shield, Users, Settings, AlertTriangle, Save, Loader2, Brain, Search, Plus, UserCheck } from 'lucide-react';
 import { Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import MitigationSelector from './MitigationSelector';
 import { AppliedMitigation } from '../types/mitigation';
 import { aiService } from '../services/aiService';
+import { supabase } from '../lib/supabase';
 
 type AssetInsert = Database['public']['Tables']['assets']['Insert'];
 
@@ -13,12 +14,27 @@ interface AddAssetFormProps {
   onSubmit: (data: AssetInsert) => Promise<void>;
 }
 
+interface Personnel {
+  id: string;
+  name: string;
+  employee_id: string;
+  department: string;
+  category: string;
+  status: string;
+}
+
 const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiScoring, setAiScoring] = useState(false);
   const { profile } = useAuth();
   const [mitigations, setMitigations] = useState<AppliedMitigation[]>([]);
+  
+  // Personnel search and selection states
+  const [allPersonnel, setAllPersonnel] = useState<Personnel[]>([]);
+  const [personnelSearchTerm, setPersonnelSearchTerm] = useState('');
+  const [showPersonnelSearch, setShowPersonnelSearch] = useState(false);
+  const [loadingPersonnel, setLoadingPersonnel] = useState(false);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -77,6 +93,59 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
       department: ''
     }
   });
+
+  // Fetch personnel data when component mounts
+  useEffect(() => {
+    fetchPersonnel();
+  }, []);
+
+  const fetchPersonnel = async () => {
+    try {
+      setLoadingPersonnel(true);
+      
+      const { data, error } = await supabase
+        .from('personnel_details')
+        .select('id, name, employee_id, department, category, status')
+        .order('name');
+      
+      if (error) {
+        throw error;
+      }
+      
+      setAllPersonnel(data || []);
+    } catch (err) {
+      console.error('Error fetching personnel:', err);
+      setError('Failed to load personnel data');
+    } finally {
+      setLoadingPersonnel(false);
+    }
+  };
+
+  // Filter personnel based on search term
+  const filteredPersonnel = personnelSearchTerm.trim() === '' 
+    ? allPersonnel 
+    : allPersonnel.filter(person => 
+        person.name.toLowerCase().includes(personnelSearchTerm.toLowerCase()) ||
+        person.employee_id.toLowerCase().includes(personnelSearchTerm.toLowerCase()) ||
+        person.department.toLowerCase().includes(personnelSearchTerm.toLowerCase())
+      );
+
+  // Get selected personnel details
+  const selectedPersonnel = allPersonnel.filter(person => 
+    formData.personnel.authorized.includes(person.employee_id)
+  );
+
+  const handleAddPersonnel = (employeeId: string) => {
+    if (!formData.personnel.authorized.includes(employeeId)) {
+      const updatedAuthorized = [...formData.personnel.authorized, employeeId];
+      updateFormData('personnel.authorized', updatedAuthorized);
+    }
+  };
+
+  const handleRemovePersonnel = (employeeId: string) => {
+    const updatedAuthorized = formData.personnel.authorized.filter(id => id !== employeeId);
+    updateFormData('personnel.authorized', updatedAuthorized);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -586,7 +655,7 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
               <Users className="w-5 h-5 text-purple-500" />
               <span>Personnel Information</span>
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Current Personnel
@@ -612,6 +681,138 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
+            </div>
+
+            {/* Authorized Personnel Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-gray-700">
+                  Authorized Personnel
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPersonnelSearch(!showPersonnelSearch)}
+                  className="flex items-center space-x-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Personnel</span>
+                </button>
+              </div>
+
+              {/* Selected Personnel List */}
+              {selectedPersonnel.length > 0 ? (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {selectedPersonnel.map(person => (
+                    <div 
+                      key={person.employee_id} 
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                          <span className="text-white font-semibold text-xs">
+                            {person.name.split(' ').map(n => n[0]).join('')}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{person.name}</p>
+                          <p className="text-xs text-gray-500">{person.employee_id} • {person.department}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePersonnel(person.employee_id)}
+                        className="p-1 text-red-500 hover:text-red-700 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                  <p className="text-gray-500 text-sm">No personnel added yet</p>
+                </div>
+              )}
+
+              {/* Personnel Search Panel */}
+              {showPersonnelSearch && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 p-3 border-b border-gray-200">
+                    <div className="relative">
+                      <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search personnel by name, ID, or department..."
+                        value={personnelSearchTerm}
+                        onChange={(e) => setPersonnelSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="max-h-60 overflow-y-auto">
+                    {loadingPersonnel ? (
+                      <div className="flex items-center justify-center p-4">
+                        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                      </div>
+                    ) : filteredPersonnel.length === 0 ? (
+                      <div className="p-4 text-center">
+                        <p className="text-gray-500">No personnel found</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-200">
+                        {filteredPersonnel.map(person => (
+                          <div 
+                            key={person.employee_id} 
+                            className="flex items-center justify-between p-3 hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="flex items-center space-x-3">
+                              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                                <span className="text-white font-semibold text-xs">
+                                  {person.name.split(' ').map(n => n[0]).join('')}
+                                </span>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">{person.name}</p>
+                                <div className="flex items-center space-x-2">
+                                  <p className="text-xs text-gray-500">{person.employee_id}</p>
+                                  <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">{person.department}</span>
+                                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full capitalize">{person.status}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleAddPersonnel(person.employee_id);
+                                setShowPersonnelSearch(false);
+                              }}
+                              disabled={formData.personnel.authorized.includes(person.employee_id)}
+                              className={`flex items-center space-x-1 px-3 py-1 rounded-lg transition-colors ${
+                                formData.personnel.authorized.includes(person.employee_id)
+                                  ? 'bg-green-100 text-green-700 cursor-default'
+                                  : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                              }`}
+                            >
+                              {formData.personnel.authorized.includes(person.employee_id) ? (
+                                <>
+                                  <UserCheck className="w-4 h-4" />
+                                  <span>Added</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-4 h-4" />
+                                  <span>Add</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
