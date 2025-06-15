@@ -46,6 +46,7 @@ import Modal from './common/Modal';
 
 const AssetSecurityDashboard: React.FC = () => {
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
+  const [editingAsset, setEditingAsset] = useState<any | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'map'>('list');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
@@ -61,7 +62,8 @@ const AssetSecurityDashboard: React.FC = () => {
     loading, 
     error, 
     fetchAssets, 
-    addAsset, 
+    addAsset,
+    updateAsset, 
     deleteAsset, 
     logAuditEvent 
   } = useAssets();
@@ -69,21 +71,40 @@ const AssetSecurityDashboard: React.FC = () => {
   // Add console log to track rendering and state
   console.log('AssetSecurityDashboard rendering, showAddAssetForm:', showAddAssetForm);
 
-  const handleAddAsset = async (assetData: any) => {
+  const handleSubmitAsset = async (assetData: any) => {
     try {
-      const newAsset = await addAsset(assetData);
-      if (newAsset) {
-        await logAuditEvent('asset_created', newAsset.id, { 
-          asset_name: newAsset.name,
-          asset_type: newAsset.type,
-          asset_location: newAsset.location
-        });
+      if (editingAsset) {
+        // Update existing asset
+        const updatedAsset = await updateAsset(editingAsset.id, assetData);
+        if (updatedAsset) {
+          await logAuditEvent('asset_updated', updatedAsset.id, { 
+            asset_name: updatedAsset.name,
+            asset_type: updatedAsset.type,
+            asset_location: updatedAsset.location
+          });
+        }
+      } else {
+        // Add new asset
+        const newAsset = await addAsset(assetData);
+        if (newAsset) {
+          await logAuditEvent('asset_created', newAsset.id, { 
+            asset_name: newAsset.name,
+            asset_type: newAsset.type,
+            asset_location: newAsset.location
+          });
+        }
       }
       setShowAddAssetForm(false);
+      setEditingAsset(null);
     } catch (err) {
-      console.error('Error adding asset:', err);
+      console.error('Error submitting asset:', err);
       throw err;
     }
+  };
+
+  const handleEditAsset = (asset: any) => {
+    setEditingAsset(asset);
+    setShowAddAssetForm(true);
   };
 
   const handleDeleteAsset = async (assetId: string, assetName: string) => {
@@ -296,6 +317,7 @@ const AssetSecurityDashboard: React.FC = () => {
               onClick={() => {
                 console.log('Add Asset button clicked, setting showAddAssetForm to true');
                 setShowAddAssetForm(true);
+                setEditingAsset(null); // Ensure we're in "add" mode, not "edit" mode
               }}
               className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
@@ -597,6 +619,7 @@ const AssetSecurityDashboard: React.FC = () => {
                           </button>
                           {hasPermission('assets.update') && (
                             <button 
+                              onClick={() => handleEditAsset(asset)}
                               className="text-gray-600 hover:text-gray-900"
                               title="Edit asset"
                             >
@@ -642,9 +665,6 @@ const AssetSecurityDashboard: React.FC = () => {
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getAIRiskColor(riskScore)}`}>
                       {riskScore}
                     </span>
-                    {hasMitigations && (
-                      <Shield className="w-4 h-4 text-green-500" title="Mitigations applied" />
-                    )}
                   </div>
                 </div>
                 
@@ -690,6 +710,16 @@ const AssetSecurityDashboard: React.FC = () => {
                     View Details
                   </button>
                   
+                  {hasPermission('assets.update') && (
+                    <button
+                      onClick={() => handleEditAsset(asset)}
+                      className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+                      title="Edit asset"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                  )}
+                  
                   {hasPermission('assets.delete') && (
                     <button
                       onClick={() => handleDeleteAsset(asset.id, asset.name)}
@@ -706,11 +736,15 @@ const AssetSecurityDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Add Asset Form Modal */}
+      {/* Add/Edit Asset Form Modal */}
       {showAddAssetForm && (
         <AddAssetForm
-          onClose={() => setShowAddAssetForm(false)}
-          onSubmit={handleAddAsset}
+          onClose={() => {
+            setShowAddAssetForm(false);
+            setEditingAsset(null);
+          }}
+          onSubmit={handleSubmitAsset}
+          assetToEdit={editingAsset}
         />
       )}
 
@@ -738,6 +772,18 @@ const AssetSecurityDashboard: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center space-x-2">
+              {hasPermission('assets.update') && (
+                <button
+                  onClick={() => {
+                    handleEditAsset(selectedAsset);
+                    setSelectedAsset(null);
+                  }}
+                  className="p-2 text-gray-600 hover:text-gray-900 transition-colors"
+                  title="Edit asset"
+                >
+                  <Edit className="w-5 h-5" />
+                </button>
+              )}
               {hasPermission('assets.delete') && (
                 <button
                   onClick={() => {

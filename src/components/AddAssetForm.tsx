@@ -13,10 +13,12 @@ import LocationSearchInput from './common/LocationSearchInput';
 import { LocationData } from '../services/nominatimService';
 
 type AssetInsert = Database['public']['Tables']['assets']['Insert'];
+type Asset = Database['public']['Tables']['assets']['Row'];
 
 interface AddAssetFormProps {
   onClose: () => void;
   onSubmit: (data: AssetInsert) => Promise<void>;
+  assetToEdit?: Asset | null;
 }
 
 interface Personnel {
@@ -28,7 +30,7 @@ interface Personnel {
   status: string;
 }
 
-const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
+const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit, assetToEdit }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiScoring, setAiScoring] = useState(false);
@@ -99,6 +101,35 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
       department: ''
     }
   });
+
+  // Initialize form with asset data if editing
+  useEffect(() => {
+    if (assetToEdit) {
+      // Set mitigations if they exist
+      if (assetToEdit.mitigations && Array.isArray(assetToEdit.mitigations)) {
+        setMitigations(assetToEdit.mitigations as AppliedMitigation[]);
+      }
+      
+      // Update form data with asset values
+      const formValues = {
+        name: assetToEdit.name,
+        type: assetToEdit.type,
+        location: assetToEdit.location as any,
+        status: assetToEdit.status,
+        personnel: assetToEdit.personnel as any,
+        ai_risk_score: assetToEdit.ai_risk_score as any,
+        security_systems: assetToEdit.security_systems as any,
+        compliance: assetToEdit.compliance as any,
+        incidents: assetToEdit.incidents as any,
+        responsible_officer: assetToEdit.responsible_officer as any
+      };
+      
+      // Update each field in the form
+      Object.entries(formValues).forEach(([key, value]) => {
+        updateFormData(key, value);
+      });
+    }
+  }, [assetToEdit, updateFormData]);
 
   // Fetch personnel data when component mounts
   useEffect(() => {
@@ -189,33 +220,36 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
         responsible_officer: formData.responsible_officer
       };
 
-      // Set AI scoring state to show loading indicator
-      setAiScoring(true);
-
-      // Call AI service to get risk score
+      // Only perform AI scoring for new assets or if explicitly requested
       let aiRiskScore = { ...formData.ai_risk_score };
       
-      try {
-        const aiResult = await aiService.scoreAssetRisk(assetData);
-        
-        // Update risk score with AI-calculated values
-        aiRiskScore = {
-          overall: aiResult.score,
-          components: aiResult.components || aiRiskScore.components,
-          trend: (aiResult.trend as 'improving' | 'stable' | 'deteriorating') || 'stable',
-          lastUpdated: new Date().toISOString(),
-          confidence: aiResult.confidence,
-          predictions: aiResult.predictions || {
-            nextWeek: Math.round(aiResult.score * (1 + (Math.random() * 0.1 - 0.05))),
-            nextMonth: Math.round(aiResult.score * (1 + (Math.random() * 0.2 - 0.1)))
-          },
-          explanation: aiResult.explanation
-        };
-      } catch (aiError) {
-        console.error('Error getting AI risk score:', aiError);
-        // Continue with default risk score if AI scoring fails
-      } finally {
-        setAiScoring(false);
+      if (!assetToEdit) {
+        // Set AI scoring state to show loading indicator
+        setAiScoring(true);
+
+        // Call AI service to get risk score
+        try {
+          const aiResult = await aiService.scoreAssetRisk(assetData);
+          
+          // Update risk score with AI-calculated values
+          aiRiskScore = {
+            overall: aiResult.score,
+            components: aiResult.components || aiRiskScore.components,
+            trend: (aiResult.trend as 'improving' | 'stable' | 'deteriorating') || 'stable',
+            lastUpdated: new Date().toISOString(),
+            confidence: aiResult.confidence,
+            predictions: aiResult.predictions || {
+              nextWeek: Math.round(aiResult.score * (1 + (Math.random() * 0.1 - 0.05))),
+              nextMonth: Math.round(aiResult.score * (1 + (Math.random() * 0.2 - 0.1)))
+            },
+            explanation: aiResult.explanation
+          };
+        } catch (aiError) {
+          console.error('Error getting AI risk score:', aiError);
+          // Continue with default risk score if AI scoring fails
+        } finally {
+          setAiScoring(false);
+        }
       }
       
       // Calculate effective risk score based on mitigations
@@ -251,6 +285,11 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
         mitigations: mitigations.length > 0 ? mitigations : null
       };
 
+      // If editing, include the ID in the data
+      if (assetToEdit) {
+        finalAssetData.id = assetToEdit.id;
+      }
+
       await onSubmit(finalAssetData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add asset');
@@ -278,7 +317,7 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
                 <Building className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Add New Asset</h2>
+                <h2 className="text-xl font-bold text-gray-900">{assetToEdit ? 'Edit Asset' : 'Add New Asset'}</h2>
                 <p className="text-gray-600">Enter asset details and security information</p>
               </div>
             </div>
@@ -512,7 +551,8 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
                             </div>
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 handleAddPersonnel(person.employee_id);
                                 setShowPersonnelSearch(false);
                               }}
@@ -733,12 +773,12 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit }) => {
               {loading || aiScoring ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{aiScoring ? 'Calculating AI Risk Score...' : 'Adding...'}</span>
+                  <span>{aiScoring ? 'Calculating AI Risk Score...' : assetToEdit ? 'Updating...' : 'Adding...'}</span>
                 </>
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  <span>Add Asset</span>
+                  <span>{assetToEdit ? 'Update Asset' : 'Add Asset'}</span>
                 </>
               )}
             </button>
