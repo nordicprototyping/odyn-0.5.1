@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { X, MapPin, Plane, Building, Calendar, Clock, Save } from 'lucide-react';
 import { TimelineBlock, LocationBlock, TransportBlock, AccommodationBlock } from '../../types/timeline';
+import { countries } from '../../utils/constants';
+import LocationSearchInput from '../common/LocationSearchInput';
+import { LocationData } from '../../services/nominatimService';
 
 interface TimelineBlockFormProps {
   block?: TimelineBlock;
@@ -57,16 +60,36 @@ const TimelineBlockForm: React.FC<TimelineBlockFormProps> = ({
     notes: ''
   });
 
+  // Location search state
+  const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
+  const [selectedAccommodationLocation, setSelectedAccommodationLocation] = useState<LocationData | null>(null);
+
   useEffect(() => {
     if (block) {
       setType(block.type);
       
       if (block.type === 'location') {
         setLocationData(block.data);
+        if (block.data.city && block.data.country) {
+          setSelectedLocation({
+            address: block.data.address,
+            city: block.data.city,
+            country: block.data.country,
+            coordinates: block.data.coordinates || [0, 0]
+          });
+        }
       } else if (block.type === 'transport') {
         setTransportData(block.data);
       } else if (block.type === 'accommodation') {
         setAccommodationData(block.data);
+        if (block.data.city && block.data.country) {
+          setSelectedAccommodationLocation({
+            address: block.data.address,
+            city: block.data.city,
+            country: block.data.country,
+            coordinates: [0, 0]
+          });
+        }
       }
     }
   }, [block]);
@@ -115,26 +138,24 @@ const TimelineBlockForm: React.FC<TimelineBlockFormProps> = ({
     setAccommodationData(prev => ({ ...prev, [field]: value }));
   };
 
-  const countries = [
-    'United States',
-    'United Kingdom',
-    'Singapore',
-    'Turkey',
-    'Ukraine',
-    'India',
-    'South Korea',
-    'France',
-    'Germany',
-    'Japan',
-    'Australia',
-    'Canada',
-    'Poland',
-    'United Arab Emirates',
-    'Netherlands',
-    'Switzerland',
-    'Italy',
-    'Spain'
-  ];
+  const handleLocationChange = (location: LocationData | null) => {
+    setSelectedLocation(location);
+    if (location) {
+      updateLocationData('address', location.address);
+      updateLocationData('city', location.city);
+      updateLocationData('country', location.country);
+      updateLocationData('coordinates', location.coordinates);
+    }
+  };
+
+  const handleAccommodationLocationChange = (location: LocationData | null) => {
+    setSelectedAccommodationLocation(location);
+    if (location) {
+      updateAccommodationData('address', location.address);
+      updateAccommodationData('city', location.city);
+      updateAccommodationData('country', location.country);
+    }
+  };
 
   const renderLocationForm = () => (
     <div className="space-y-4">
@@ -169,50 +190,13 @@ const TimelineBlockForm: React.FC<TimelineBlockFormProps> = ({
       </div>
       
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Address *
-        </label>
-        <input
-          type="text"
-          required
-          value={locationData.address}
-          onChange={(e) => updateLocationData('address', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="Street address"
+        <LocationSearchInput
+          value={selectedLocation}
+          onChange={handleLocationChange}
+          placeholder="Search for location..."
+          required={true}
+          label="Location Address *"
         />
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            City *
-          </label>
-          <input
-            type="text"
-            required
-            value={locationData.city}
-            onChange={(e) => updateLocationData('city', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="City"
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Country *
-          </label>
-          <select
-            required
-            value={locationData.country}
-            onChange={(e) => updateLocationData('country', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="">Select Country</option>
-            {countries.map(country => (
-              <option key={country} value={country}>{country}</option>
-            ))}
-          </select>
-        </div>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -410,50 +394,13 @@ const TimelineBlockForm: React.FC<TimelineBlockFormProps> = ({
       </div>
       
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Address *
-        </label>
-        <input
-          type="text"
-          required
-          value={accommodationData.address}
-          onChange={(e) => updateAccommodationData('address', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="Street address"
+        <LocationSearchInput
+          value={selectedAccommodationLocation}
+          onChange={handleAccommodationLocationChange}
+          placeholder="Search for accommodation location..."
+          required={true}
+          label="Accommodation Address *"
         />
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            City *
-          </label>
-          <input
-            type="text"
-            required
-            value={accommodationData.city}
-            onChange={(e) => updateAccommodationData('city', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="City"
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Country *
-          </label>
-          <select
-            required
-            value={accommodationData.country}
-            onChange={(e) => updateAccommodationData('country', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="">Select Country</option>
-            {countries.map(country => (
-              <option key={country} value={country}>{country}</option>
-            ))}
-          </select>
-        </div>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

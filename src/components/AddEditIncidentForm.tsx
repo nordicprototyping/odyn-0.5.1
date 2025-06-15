@@ -4,6 +4,8 @@ import { Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useFormState } from '../hooks/useFormState';
 import { useDepartments } from '../hooks/useDepartments';
+import LocationSearchInput from './common/LocationSearchInput';
+import { LocationData } from '../services/nominatimService';
 
 type IncidentReport = Database['public']['Tables']['incident_reports']['Row'];
 type IncidentInsert = Database['public']['Tables']['incident_reports']['Insert'];
@@ -30,6 +32,7 @@ const AddEditIncidentForm: React.FC<AddEditIncidentFormProps> = ({
     date_time: '',
     severity: 'Medium' as const,
     location: '',
+    locationData: null as LocationData | null,
     department: '',
     involved_parties: '',
     immediate_actions: '',
@@ -47,6 +50,7 @@ const AddEditIncidentForm: React.FC<AddEditIncidentFormProps> = ({
         date_time: new Date(incidentToEdit.date_time).toISOString().slice(0, 16),
         severity: incidentToEdit.severity,
         location: incidentToEdit.location,
+        locationData: null,
         department: incidentToEdit.department,
         involved_parties: incidentToEdit.involved_parties.join(', '),
         immediate_actions: incidentToEdit.immediate_actions || '',
@@ -56,6 +60,22 @@ const AddEditIncidentForm: React.FC<AddEditIncidentFormProps> = ({
       });
     }
   }, [incidentToEdit, setFormData]);
+
+  const handleLocationChange = (location: LocationData | null) => {
+    if (location) {
+      // Update both the location string and the location data
+      updateFormData('locationData', location);
+      
+      // Create a formatted location string
+      const locationString = [
+        location.address,
+        location.city,
+        location.country
+      ].filter(Boolean).join(', ');
+      
+      updateFormData('location', locationString);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,6 +124,11 @@ const AddEditIncidentForm: React.FC<AddEditIncidentFormProps> = ({
         ];
       }
 
+      // If we have location coordinates from Nominatim, add them to the incident data
+      if (formData.locationData) {
+        incidentData.location_coordinates = formData.locationData.coordinates;
+      }
+
       await onSubmit(incidentData);
     } catch (err) {
       console.error('Error submitting incident:', err);
@@ -114,7 +139,7 @@ const AddEditIncidentForm: React.FC<AddEditIncidentFormProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+    <>
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-gray-900">
@@ -196,18 +221,23 @@ const AddEditIncidentForm: React.FC<AddEditIncidentFormProps> = ({
             </select>
           </div>
           
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Location *
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.location}
-              onChange={(e) => updateFormData('location', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Specific location where incident occurred"
+          <div className="md:col-span-2">
+            <LocationSearchInput
+              value={formData.locationData}
+              onChange={handleLocationChange}
+              placeholder="Search for incident location..."
+              required={true}
+              label="Location *"
             />
+            {formData.location && !formData.locationData && (
+              <input
+                type="text"
+                value={formData.location}
+                onChange={(e) => updateFormData('location', e.target.value)}
+                className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Or enter location manually"
+              />
+            )}
           </div>
           
           <div>
@@ -227,7 +257,7 @@ const AddEditIncidentForm: React.FC<AddEditIncidentFormProps> = ({
             </select>
           </div>
           
-          <div className="md:col-span-2">
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Involved Parties
             </label>
@@ -327,7 +357,7 @@ const AddEditIncidentForm: React.FC<AddEditIncidentFormProps> = ({
           </button>
         </div>
       </form>
-    </div>
+    </>
   );
 };
 

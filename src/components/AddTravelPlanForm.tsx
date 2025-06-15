@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plane, MapPin, Calendar, User, Shield, Phone, FileText, AlertTriangle, Save, Loader2, Brain } from 'lucide-react';
+import { X, Plane, MapPin, Calendar, Clock, AlertTriangle, CheckCircle, XCircle, Users, Shield, Globe, Search, Filter, Download, Plus, Eye, Edit, FileText, Brain, Zap, TrendingUp, TrendingDown, Car, Building, Phone, Mail, Loader2, Save } from 'lucide-react';
 import { Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { TimelineBlock } from '../types/timeline';
@@ -10,6 +10,8 @@ import { AppliedMitigation } from '../types/mitigation';
 import { useFormState } from '../hooks/useFormState';
 import { countries, clearanceLevels } from '../utils/constants';
 import { useDepartments } from '../hooks/useDepartments';
+import LocationSearchInput from './common/LocationSearchInput';
+import { LocationData } from '../services/nominatimService';
 
 type TravelPlan = Database['public']['Tables']['travel_plans']['Row'];
 type TravelPlanInsert = Database['public']['Tables']['travel_plans']['Insert'];
@@ -109,6 +111,28 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
       });
     }
   }, [travelPlanToEdit, setFormData]);
+
+  const handleDestinationChange = (location: LocationData | null) => {
+    if (location) {
+      updateFormData('destination', {
+        address: location.address,
+        city: location.city,
+        country: location.country,
+        coordinates: location.coordinates
+      });
+    }
+  };
+
+  const handleOriginChange = (location: LocationData | null) => {
+    if (location) {
+      updateFormData('origin', {
+        address: location.address,
+        city: location.city,
+        country: location.country,
+        coordinates: location.coordinates
+      });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -447,69 +471,35 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
                   {/* Origin */}
                   <div className="space-y-4">
                     <h4 className="text-md font-medium text-gray-800">Origin</h4>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Origin City *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.origin.city}
-                        onChange={(e) => updateFormData('origin.city', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Enter origin city"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Origin Country *
-                      </label>
-                      <select
-                        required
-                        value={formData.origin.country}
-                        onChange={(e) => updateFormData('origin.country', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="">Select Country</option>
-                        {countries.map(country => (
-                          <option key={country} value={country}>{country}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <LocationSearchInput
+                      value={formData.origin.city ? {
+                        address: formData.origin.address || '',
+                        city: formData.origin.city,
+                        country: formData.origin.country,
+                        coordinates: formData.origin.coordinates
+                      } : null}
+                      onChange={handleOriginChange}
+                      placeholder="Search for origin location..."
+                      required={true}
+                      label="Origin Location *"
+                    />
                   </div>
 
                   {/* Destination */}
                   <div className="space-y-4">
                     <h4 className="text-md font-medium text-gray-800">Destination</h4>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Destination City *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.destination.city}
-                        onChange={(e) => updateFormData('destination.city', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Enter destination city"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Destination Country *
-                      </label>
-                      <select
-                        required
-                        value={formData.destination.country}
-                        onChange={(e) => updateFormData('destination.country', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="">Select Country</option>
-                        {countries.map(country => (
-                          <option key={country} value={country}>{country}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <LocationSearchInput
+                      value={formData.destination.city ? {
+                        address: formData.destination.address || '',
+                        city: formData.destination.city,
+                        country: formData.destination.country,
+                        coordinates: formData.destination.coordinates
+                      } : null}
+                      onChange={handleDestinationChange}
+                      placeholder="Search for destination location..."
+                      required={true}
+                      label="Destination Location *"
+                    />
                   </div>
                 </div>
               </div>

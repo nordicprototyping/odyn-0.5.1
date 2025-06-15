@@ -7,6 +7,8 @@ import { AppliedMitigation } from '../types/mitigation';
 import { useFormState } from '../hooks/useFormState';
 import { countries } from '../utils/constants';
 import { useDepartments } from '../hooks/useDepartments';
+import LocationSearchInput from './common/LocationSearchInput';
+import { LocationData } from '../services/nominatimService';
 
 interface AddPersonnelFormProps {
   onClose: () => void;
@@ -63,6 +65,17 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
     status: 'active',
     last_seen: 'Just now'
   });
+
+  const handleLocationChange = (location: LocationData | null) => {
+    if (location) {
+      updateFormData('current_location', {
+        address: location.address,
+        city: location.city,
+        country: location.country,
+        coordinates: location.coordinates
+      });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -259,67 +272,23 @@ const AddPersonnelForm: React.FC<AddPersonnelFormProps> = ({ onClose, onSubmit }
               <MapPin className="w-5 h-5 text-green-500" />
               <span>Location Information</span>
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Current City *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.current_location.city}
-                  onChange={(e) => updateFormData('current_location.city', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter current city"
-                />
-              </div>
+            
+            <div className="space-y-4">
+              <LocationSearchInput
+                value={formData.current_location.city ? {
+                  address: '',
+                  city: formData.current_location.city,
+                  country: formData.current_location.country,
+                  coordinates: formData.current_location.coordinates
+                } : null}
+                onChange={handleLocationChange}
+                placeholder="Search for current location..."
+                required={true}
+                label="Current Location *"
+                showCoordinates={true}
+              />
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Current Country *
-                </label>
-                <select
-                  required
-                  value={formData.current_location.country}
-                  onChange={(e) => updateFormData('current_location.country', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Select Country</option>
-                  {countries.map(country => (
-                    <option key={country} value={country}>{country}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Latitude
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  value={formData.current_location.coordinates[1]}
-                  onChange={(e) => updateFormData('current_location.coordinates', [formData.current_location.coordinates[0], parseFloat(e.target.value) || 0])}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., 40.7128"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Longitude
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  value={formData.current_location.coordinates[0]}
-                  onChange={(e) => updateFormData('current_location.coordinates', [parseFloat(e.target.value) || 0, formData.current_location.coordinates[1]])}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., -74.0060"
-                />
-              </div>
-
-              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Work Location *
                 </label>
