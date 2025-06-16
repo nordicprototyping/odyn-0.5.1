@@ -12,10 +12,12 @@ import { countries, clearanceLevels } from '../utils/constants';
 import { useDepartments } from '../hooks/useDepartments';
 import LocationSearchInput from './common/LocationSearchInput';
 import { LocationData } from '../services/nominatimService';
+import { supabase } from '../lib/supabase';
 
 type TravelPlan = Database['public']['Tables']['travel_plans']['Row'];
 type TravelPlanInsert = Database['public']['Tables']['travel_plans']['Insert'];
 type TravelPlanUpdate = Database['public']['Tables']['travel_plans']['Update'];
+type Personnel = Database['public']['Tables']['personnel_details']['Row'];
 
 interface AddTravelPlanFormProps {
   onClose: () => void;
@@ -31,6 +33,11 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
   const [aiScoring, setAiScoring] = useState(false);
   const [mitigations, setMitigations] = useState<AppliedMitigation[]>([]);
   const { departments } = useDepartments();
+  const [personnelList, setPersonnelList] = useState<Personnel[]>([]);
+  const [loadingPersonnel, setLoadingPersonnel] = useState(false);
+  const [selectedPersonnel, setSelectedPersonnel] = useState<Personnel | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showPersonnelSearch, setShowPersonnelSearch] = useState(false);
   
   const { user, profile } = useAuth();
 
@@ -60,10 +67,8 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
       embassy: ''
     },
     itinerary: {
-      accommodation: '',
-      transportation: '',
-      meetings: [] as string[],
-      timeline: [] as TimelineBlock[]
+      timeline: [] as TimelineBlock[],
+      meetings: [] as string[]
     },
     risk_assessment: {
       overall: 25,
@@ -78,6 +83,33 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
       recommendations: [] as string[]
     }
   });
+
+  // Fetch personnel data when component mounts
+  useEffect(() => {
+    fetchPersonnel();
+  }, []);
+
+  const fetchPersonnel = async () => {
+    try {
+      setLoadingPersonnel(true);
+      
+      const { data, error } = await supabase
+        .from('personnel_details')
+        .select('*')
+        .order('name');
+      
+      if (error) {
+        throw error;
+      }
+      
+      setPersonnelList(data || []);
+    } catch (err) {
+      console.error('Error fetching personnel:', err);
+      setError('Failed to load personnel data');
+    } finally {
+      setLoadingPersonnel(false);
+    }
+  };
 
   // Update form data when editing an existing travel plan
   useEffect(() => {
@@ -109,8 +141,18 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
         },
         risk_assessment: travelPlanToEdit.risk_assessment as any
       });
+
+      // Find the personnel in the list that matches the travel plan
+      if (personnelList.length > 0) {
+        const matchedPersonnel = personnelList.find(p => 
+          p.employee_id === travelPlanToEdit.traveler_employee_id
+        );
+        if (matchedPersonnel) {
+          setSelectedPersonnel(matchedPersonnel);
+        }
+      }
     }
-  }, [travelPlanToEdit, setFormData]);
+  }, [travelPlanToEdit, setFormData, personnelList]);
 
   const handleDestinationChange = (location: LocationData | null) => {
     if (location) {
@@ -132,6 +174,21 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
         coordinates: location.coordinates
       });
     }
+  };
+
+  const handlePersonnelSelect = (personnel: Personnel) => {
+    setSelectedPersonnel(personnel);
+    updateFormData('traveler_name', personnel.name);
+    updateFormData('traveler_employee_id', personnel.employee_id);
+    updateFormData('traveler_department', personnel.department);
+    updateFormData('traveler_clearance_level', personnel.clearance_level);
+    
+    // If the personnel has a current location, use it as the origin
+    if (personnel.current_location) {
+      updateFormData('origin', personnel.current_location);
+    }
+    
+    setShowPersonnelSearch(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -232,7 +289,7 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
         // Prepare final data for new travel plan
         const travelPlanDataFinal: TravelPlanInsert = {
           organization_id: profile?.organization_id || '',
-          traveler_user_id: user?.id || null,
+          traveler_user_id: selectedPersonnel?.user_id || null,
           traveler_name: updatedFormData.traveler_name,
           traveler_employee_id: updatedFormData.traveler_employee_id,
           traveler_department: updatedFormData.traveler_department,
@@ -282,6 +339,7 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
 
         // Prepare update data
         const travelPlanUpdateData: TravelPlanUpdate = {
+          traveler_user_id: selectedPersonnel?.user_id || null,
           traveler_name: updatedFormData.traveler_name,
           traveler_employee_id: updatedFormData.traveler_employee_id,
           traveler_department: updatedFormData.traveler_department,
@@ -310,6 +368,15 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
   const handleTimelineChange = (blocks: TimelineBlock[]) => {
     setTimelineBlocks(blocks);
   };
+
+  // Filter personnel based on search term
+  const filteredPersonnel = searchTerm.trim() === '' 
+    ? personnelList 
+    : personnelList.filter(person => 
+        person.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        person.employee_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        person.department.toLowerCase().includes(searchTerm.toLowerCase())
+      );
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
@@ -397,68 +464,189 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
                   <User className="w-5 h-5 text-blue-500" />
                   <span>Traveler Information</span>
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Full Name *
+                
+                {/* Personnel Selector */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Select Personnel *
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.traveler_name}
-                      onChange={(e) => updateFormData('traveler_name', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Enter traveler name"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Employee ID *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.traveler_employee_id}
-                      onChange={(e) => updateFormData('traveler_employee_id', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="e.g., EMP-001"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Department *
-                    </label>
-                    <select
-                      required
-                      value={formData.traveler_department}
-                      onChange={(e) => updateFormData('traveler_department', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    <button
+                      type="button"
+                      onClick={() => setShowPersonnelSearch(!showPersonnelSearch)}
+                      className="text-sm text-blue-600 hover:text-blue-800"
                     >
-                      <option value="">Select Department</option>
-                      {departments.map(dept => (
-                        <option key={dept} value={dept}>{dept}</option>
-                      ))}
-                    </select>
+                      {showPersonnelSearch ? 'Hide' : 'Search Personnel'}
+                    </button>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Security Clearance *
-                    </label>
-                    <select
-                      required
-                      value={formData.traveler_clearance_level}
-                      onChange={(e) => updateFormData('traveler_clearance_level', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      {clearanceLevels.map(level => (
-                        <option key={level} value={level}>{level}</option>
-                      ))}
-                    </select>
-                  </div>
+                  
+                  {selectedPersonnel ? (
+                    <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                          <span className="text-white font-semibold text-sm">
+                            {selectedPersonnel.name.split(' ').map(n => n[0]).join('')}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{selectedPersonnel.name}</p>
+                          <div className="flex items-center space-x-2">
+                            <p className="text-xs text-gray-500">{selectedPersonnel.employee_id}</p>
+                            <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">{selectedPersonnel.department}</span>
+                            <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full">{selectedPersonnel.clearance_level}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPersonnel(null);
+                          updateFormData('traveler_name', '');
+                          updateFormData('traveler_employee_id', '');
+                          updateFormData('traveler_department', '');
+                          updateFormData('traveler_clearance_level', 'Unclassified');
+                        }}
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                      <p className="text-gray-500 text-sm">No personnel selected</p>
+                      <button
+                        type="button"
+                        onClick={() => setShowPersonnelSearch(true)}
+                        className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                      >
+                        Select Personnel
+                      </button>
+                    </div>
+                  )}
+                  
+                  {showPersonnelSearch && (
+                    <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="bg-gray-50 p-3 border-b border-gray-200">
+                        <div className="relative">
+                          <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search personnel by name, ID, or department..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="max-h-60 overflow-y-auto">
+                        {loadingPersonnel ? (
+                          <div className="flex items-center justify-center p-4">
+                            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                          </div>
+                        ) : filteredPersonnel.length === 0 ? (
+                          <div className="p-4 text-center">
+                            <p className="text-gray-500">No personnel found</p>
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-gray-200">
+                            {filteredPersonnel.map(person => (
+                              <div 
+                                key={person.id} 
+                                className="flex items-center justify-between p-3 hover:bg-gray-50 cursor-pointer"
+                                onClick={() => handlePersonnelSelect(person)}
+                              >
+                                <div className="flex items-center space-x-3">
+                                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                                    <span className="text-white font-semibold text-xs">
+                                      {person.name.split(' ').map(n => n[0]).join('')}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-900">{person.name}</p>
+                                    <div className="flex items-center space-x-2">
+                                      <p className="text-xs text-gray-500">{person.employee_id}</p>
+                                      <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">{person.department}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded-full">
+                                  {person.clearance_level}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
+                
+                {/* Manual Input Fields (shown if no personnel is selected or for editing) */}
+                {(!selectedPersonnel || isEditMode) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Full Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.traveler_name}
+                        onChange={(e) => updateFormData('traveler_name', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter traveler name"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Employee ID *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.traveler_employee_id}
+                        onChange={(e) => updateFormData('traveler_employee_id', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="e.g., EMP-001"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Department *
+                      </label>
+                      <select
+                        required
+                        value={formData.traveler_department}
+                        onChange={(e) => updateFormData('traveler_department', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="">Select Department</option>
+                        {departments.map(dept => (
+                          <option key={dept} value={dept}>{dept}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Security Clearance *
+                      </label>
+                      <select
+                        required
+                        value={formData.traveler_clearance_level}
+                        onChange={(e) => updateFormData('traveler_clearance_level', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        {clearanceLevels.map(level => (
+                          <option key={level} value={level}>{level}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Travel Details */}
@@ -600,34 +788,6 @@ const AddTravelPlanForm: React.FC<AddTravelPlanFormProps> = ({ onClose, onSubmit
           {/* Itinerary Builder */}
           {activeTab === 'itinerary' && (
             <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Accommodation
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.itinerary.accommodation}
-                    onChange={(e) => updateFormData('itinerary.accommodation', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="e.g., Hotel name, Secure facility, etc."
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Transportation
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.itinerary.transportation}
-                    onChange={(e) => updateFormData('itinerary.transportation', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="e.g., Commercial flight, Secure vehicle, etc."
-                  />
-                </div>
-              </div>
-              
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Scheduled Meetings
