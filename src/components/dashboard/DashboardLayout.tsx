@@ -283,11 +283,11 @@ const DashboardLayout: React.FC = () => {
   
   const getWidgetClassName = (size: string) => {
     switch (size) {
-      case 'small': return 'col-span-1';
-      case 'medium': return 'col-span-1 md:col-span-2';
-      case 'large': return 'col-span-1 md:col-span-3';
-      case 'full': return 'col-span-1 md:col-span-4';
-      default: return 'col-span-1 md:col-span-2';
+      case 'small': return 'col-span-1 md:col-span-2';
+      case 'medium': return 'col-span-1 md:col-span-3';
+      case 'large': return 'col-span-1 md:col-span-4';
+      case 'full': return 'col-span-1 md:col-span-6';
+      default: return 'col-span-1 md:col-span-3';
     }
   };
   
@@ -324,7 +324,7 @@ const DashboardLayout: React.FC = () => {
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={visibleWidgets.map(w => w.id)}>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
             {visibleWidgets.map(widget => (
               <SortableWidget
                 key={widget.id}
