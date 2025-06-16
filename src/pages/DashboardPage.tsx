@@ -16,7 +16,9 @@ import {
   BarChart, 
   Map, 
   Brain,
-  AlertTriangle
+  AlertTriangle,
+  ArrowUpRight,
+  MapPin
 } from 'lucide-react';
 import GoogleMapComponent from '../components/common/GoogleMapComponent';
 import AIRiskInsights from '../components/AIRiskInsights';
