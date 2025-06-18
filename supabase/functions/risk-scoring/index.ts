@@ -171,6 +171,9 @@ async function scoreAssetRisk(assetData: any, organizationId: string, userId: st
     }
   `;
   
+  // Extract type-specific details if available
+  const typeSpecificDetails = assetData.typeSpecificDetails || '';
+  
   const prompt = `
     Please analyze the following asset data and provide a comprehensive risk assessment in JSON format:
     
@@ -178,6 +181,8 @@ async function scoreAssetRisk(assetData: any, organizationId: string, userId: st
     Asset Type: ${assetData.type}
     Location: ${assetData.location.city}, ${assetData.location.country}
     Current Status: ${assetData.status}
+    
+    ${typeSpecificDetails}
     
     Personnel Information:
     - Current Personnel: ${assetData.personnel.current}
@@ -202,6 +207,7 @@ async function scoreAssetRisk(assetData: any, organizationId: string, userId: st
     4. Personnel density and access control
     5. Compliance status and audit frequency
     6. Historical incident data
+    7. Type-specific risk factors based on the asset's specific attributes
     
     Provide a detailed risk assessment with specific recommendations for risk mitigation.
     

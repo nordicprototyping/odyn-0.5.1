@@ -196,6 +196,60 @@ class AIService {
         throw new Error('No access token available');
       }
       
+      // Update the prompt for asset risk scoring to include type-specific attributes
+      if (request.type === 'asset') {
+        // Enhance the data with additional context for the AI
+        const assetData = request.data;
+        
+        // Create a more detailed prompt based on asset type
+        let typeSpecificDetails = '';
+        
+        if (assetData.type_specific_attributes) {
+          switch (assetData.type) {
+            case 'building':
+              typeSpecificDetails = `
+                Building Type: ${assetData.type_specific_attributes.building_type || 'Not specified'}
+                Primary Function: ${assetData.type_specific_attributes.primary_function || 'Not specified'}
+                Floor Count: ${assetData.type_specific_attributes.floor_count || 'Unknown'}
+                Year Built: ${assetData.type_specific_attributes.year_built || 'Unknown'}
+                Total Area: ${assetData.type_specific_attributes.total_area ? `${assetData.type_specific_attributes.total_area} sq ft/m²` : 'Unknown'}
+                Last Renovation: ${assetData.type_specific_attributes.last_renovation || 'Unknown'}
+              `;
+              break;
+            case 'vehicle':
+              typeSpecificDetails = `
+                Vehicle Type: ${assetData.type_specific_attributes.vehicle_type || 'Not specified'}
+                Make: ${assetData.type_specific_attributes.make || 'Unknown'}
+                Model: ${assetData.type_specific_attributes.model || 'Unknown'}
+                Year: ${assetData.type_specific_attributes.year || 'Unknown'}
+                License/Registration: ${assetData.type_specific_attributes.license_plate || 'Unknown'}
+                Mileage/Hours: ${assetData.type_specific_attributes.mileage || 'Unknown'}
+                Fuel Type: ${assetData.type_specific_attributes.fuel_type || 'Unknown'}
+                Security Features: ${assetData.type_specific_attributes.security_features || 'None specified'}
+              `;
+              break;
+            case 'equipment':
+              typeSpecificDetails = `
+                Equipment Type: ${assetData.type_specific_attributes.equipment_type || 'Not specified'}
+                Manufacturer: ${assetData.type_specific_attributes.manufacturer || 'Unknown'}
+                Model: ${assetData.type_specific_attributes.model || 'Unknown'}
+                Serial Number: ${assetData.type_specific_attributes.serial_number || 'Unknown'}
+                Purchase Date: ${assetData.type_specific_attributes.purchase_date || 'Unknown'}
+                Last Maintenance: ${assetData.type_specific_attributes.last_maintenance_date || 'Unknown'}
+                Next Maintenance Due: ${assetData.type_specific_attributes.next_maintenance_due || 'Unknown'}
+                Operational Status: ${assetData.type_specific_attributes.operational_status || 'Unknown'}
+              `;
+              break;
+          }
+        }
+        
+        // Add the type-specific details to the request data
+        request.data = {
+          ...assetData,
+          typeSpecificDetails
+        };
+      }
+      
       // Update the prompt for personnel risk scoring to include new fields
       if (request.type === 'personnel') {
         // Enhance the data with additional context for the AI
@@ -245,7 +299,7 @@ class AIService {
     try {
       const { data, error } = await supabase
         .from('assets')
-        .select('name, type, location, status, ai_risk_score')
+        .select('name, type, location, status, ai_risk_score, type_specific_attributes')
         .eq('id', assetId)
         .single();
       
@@ -254,6 +308,7 @@ class AIService {
       return {
         name: data.name,
         type: data.type,
+        type_specific_attributes: data.type_specific_attributes,
         location: data.location,
         status: data.status,
         risk_score: (data.ai_risk_score as any)?.overall || 0

@@ -431,7 +431,8 @@ export interface Database {
           id: string;
           organization_id: string;
           name: string;
-          type: 'building' | 'facility' | 'vehicle' | 'equipment' | 'data-center' | 'embassy';
+          type: 'building' | 'vehicle' | 'equipment';
+          type_specific_attributes: Record<string, any>;
           location: Record<string, any>;
           status: 'secure' | 'alert' | 'maintenance' | 'offline' | 'compromised';
           personnel: Record<string, any>;
@@ -448,7 +449,8 @@ export interface Database {
           id?: string;
           organization_id: string;
           name: string;
-          type: 'building' | 'facility' | 'vehicle' | 'equipment' | 'data-center' | 'embassy';
+          type: 'building' | 'vehicle' | 'equipment';
+          type_specific_attributes?: Record<string, any>;
           location?: Record<string, any>;
           status?: 'secure' | 'alert' | 'maintenance' | 'offline' | 'compromised';
           personnel?: Record<string, any>;
@@ -465,7 +467,8 @@ export interface Database {
           id?: string;
           organization_id?: string;
           name?: string;
-          type?: 'building' | 'facility' | 'vehicle' | 'equipment' | 'data-center' | 'embassy';
+          type?: 'building' | 'vehicle' | 'equipment';
+          type_specific_attributes?: Record<string, any>;
           location?: Record<string, any>;
           status?: 'secure' | 'alert' | 'maintenance' | 'offline' | 'compromised';
           personnel?: Record<string, any>;

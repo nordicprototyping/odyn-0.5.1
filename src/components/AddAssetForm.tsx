@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Building, MapPin, Shield, Users, Settings, AlertTriangle, Save, Loader2, Brain, Search, Plus, UserCheck } from 'lucide-react';
+import { X, Building, MapPin, Shield, Users, Settings, AlertTriangle, Save, Loader2, Brain, Search, Plus, UserCheck, Car, Tool } from 'lucide-react';
 import { Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import MitigationSelector from './MitigationSelector';
@@ -7,7 +7,6 @@ import { AppliedMitigation } from '../types/mitigation';
 import { aiService } from '../services/aiService';
 import { supabase } from '../lib/supabase';
 import { useFormState } from '../hooks/useFormState';
-import { countries } from '../utils/constants';
 import { useDepartments } from '../hooks/useDepartments';
 import LocationSearchInput from './common/LocationSearchInput';
 import { LocationData } from '../services/nominatimService';
@@ -44,9 +43,10 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit, assetToE
   const [showPersonnelSearch, setShowPersonnelSearch] = useState(false);
   const [loadingPersonnel, setLoadingPersonnel] = useState(false);
   
-  const { formData, updateFormData } = useFormState({
+  const { formData, updateFormData, setFormData } = useFormState({
     name: '',
     type: 'building' as const,
+    type_specific_attributes: {} as Record<string, any>,
     location: {
       address: '',
       city: '',
@@ -114,6 +114,7 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit, assetToE
       const formValues = {
         name: assetToEdit.name,
         type: assetToEdit.type,
+        type_specific_attributes: assetToEdit.type_specific_attributes || {},
         location: assetToEdit.location as any,
         status: assetToEdit.status,
         personnel: assetToEdit.personnel as any,
@@ -211,6 +212,7 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit, assetToE
         organization_id: profile?.organization_id || '',
         name: formData.name,
         type: formData.type,
+        type_specific_attributes: formData.type_specific_attributes,
         location: formData.location,
         status: formData.status,
         personnel: formData.personnel,
@@ -274,6 +276,7 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit, assetToE
         organization_id: profile?.organization_id || '',
         name: formData.name,
         type: formData.type,
+        type_specific_attributes: formData.type_specific_attributes,
         location: formData.location,
         status: formData.status,
         personnel: formData.personnel,
@@ -300,12 +303,404 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit, assetToE
 
   const assetTypes = [
     { value: 'building', label: 'Building' },
-    { value: 'facility', label: 'Facility' },
     { value: 'vehicle', label: 'Vehicle' },
-    { value: 'equipment', label: 'Equipment' },
-    { value: 'data-center', label: 'Data Center' },
-    { value: 'embassy', label: 'Embassy' }
+    { value: 'equipment', label: 'Equipment' }
   ];
+
+  // Building type options
+  const buildingTypes = [
+    { value: 'office', label: 'Office Building' },
+    { value: 'data-center', label: 'Data Center' },
+    { value: 'embassy', label: 'Embassy' },
+    { value: 'residential', label: 'Residential' },
+    { value: 'industrial', label: 'Industrial Facility' },
+    { value: 'warehouse', label: 'Warehouse' },
+    { value: 'retail', label: 'Retail' }
+  ];
+
+  // Vehicle type options
+  const vehicleTypes = [
+    { value: 'car', label: 'Car' },
+    { value: 'truck', label: 'Truck' },
+    { value: 'van', label: 'Van' },
+    { value: 'suv', label: 'SUV' },
+    { value: 'armored', label: 'Armored Vehicle' },
+    { value: 'boat', label: 'Boat' },
+    { value: 'aircraft', label: 'Aircraft' },
+    { value: 'drone', label: 'Drone' }
+  ];
+
+  // Equipment type options
+  const equipmentTypes = [
+    { value: 'server', label: 'Server' },
+    { value: 'network', label: 'Network Equipment' },
+    { value: 'security', label: 'Security Equipment' },
+    { value: 'communication', label: 'Communication Device' },
+    { value: 'sensor', label: 'Sensor/Monitor' },
+    { value: 'tool', label: 'Tool/Machinery' },
+    { value: 'medical', label: 'Medical Equipment' },
+    { value: 'other', label: 'Other Equipment' }
+  ];
+
+  // Handle type-specific attribute changes
+  const updateTypeSpecificAttribute = (key: string, value: any) => {
+    updateFormData('type_specific_attributes', {
+      ...formData.type_specific_attributes,
+      [key]: value
+    });
+  };
+
+  // Get the appropriate icon for the asset type
+  const getAssetTypeIcon = () => {
+    switch (formData.type) {
+      case 'building':
+        return <Building className="w-5 h-5 text-white" />;
+      case 'vehicle':
+        return <Car className="w-5 h-5 text-white" />;
+      case 'equipment':
+        return <Tool className="w-5 h-5 text-white" />;
+      default:
+        return <Building className="w-5 h-5 text-white" />;
+    }
+  };
+
+  // Render type-specific form fields based on the selected asset type
+  const renderTypeSpecificFields = () => {
+    switch (formData.type) {
+      case 'building':
+        return (
+          <div className="space-y-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <Building className="w-5 h-5 text-blue-500" />
+              <span>Building Details</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Building Type *
+                </label>
+                <select
+                  required
+                  value={formData.type_specific_attributes.building_type || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('building_type', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select Building Type</option>
+                  {buildingTypes.map(type => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Primary Function
+                </label>
+                <input
+                  type="text"
+                  value={formData.type_specific_attributes.primary_function || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('primary_function', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., Office Space, Data Storage, Diplomatic Mission"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Floor Count
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={formData.type_specific_attributes.floor_count || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('floor_count', parseInt(e.target.value) || '')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Number of floors"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Year Built
+                </label>
+                <input
+                  type="number"
+                  min="1900"
+                  max={new Date().getFullYear()}
+                  value={formData.type_specific_attributes.year_built || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('year_built', parseInt(e.target.value) || '')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Year of construction"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Total Area (sq ft/m²)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.type_specific_attributes.total_area || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('total_area', parseInt(e.target.value) || '')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Total area"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Last Renovation Year
+                </label>
+                <input
+                  type="number"
+                  min="1900"
+                  max={new Date().getFullYear()}
+                  value={formData.type_specific_attributes.last_renovation || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('last_renovation', parseInt(e.target.value) || '')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Year of last renovation"
+                />
+              </div>
+            </div>
+          </div>
+        );
+      
+      case 'vehicle':
+        return (
+          <div className="space-y-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <Car className="w-5 h-5 text-blue-500" />
+              <span>Vehicle Details</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Vehicle Type *
+                </label>
+                <select
+                  required
+                  value={formData.type_specific_attributes.vehicle_type || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('vehicle_type', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select Vehicle Type</option>
+                  {vehicleTypes.map(type => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Make
+                </label>
+                <input
+                  type="text"
+                  value={formData.type_specific_attributes.make || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('make', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., Toyota, Ford, Boeing"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Model
+                </label>
+                <input
+                  type="text"
+                  value={formData.type_specific_attributes.model || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('model', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., Land Cruiser, F-150"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Year
+                </label>
+                <input
+                  type="number"
+                  min="1900"
+                  max={new Date().getFullYear() + 1}
+                  value={formData.type_specific_attributes.year || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('year', parseInt(e.target.value) || '')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Manufacturing year"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  License/Registration
+                </label>
+                <input
+                  type="text"
+                  value={formData.type_specific_attributes.license_plate || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('license_plate', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="License plate or registration number"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Mileage/Hours
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.type_specific_attributes.mileage || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('mileage', parseInt(e.target.value) || '')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Current mileage or operating hours"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fuel Type
+                </label>
+                <select
+                  value={formData.type_specific_attributes.fuel_type || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('fuel_type', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select Fuel Type</option>
+                  <option value="gasoline">Gasoline</option>
+                  <option value="diesel">Diesel</option>
+                  <option value="electric">Electric</option>
+                  <option value="hybrid">Hybrid</option>
+                  <option value="jet_fuel">Jet Fuel</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Security Features
+                </label>
+                <input
+                  type="text"
+                  value={formData.type_specific_attributes.security_features || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('security_features', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., Armored, GPS tracking, Immobilizer"
+                />
+              </div>
+            </div>
+          </div>
+        );
+      
+      case 'equipment':
+        return (
+          <div className="space-y-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <Tool className="w-5 h-5 text-blue-500" />
+              <span>Equipment Details</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Equipment Type *
+                </label>
+                <select
+                  required
+                  value={formData.type_specific_attributes.equipment_type || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('equipment_type', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select Equipment Type</option>
+                  {equipmentTypes.map(type => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Manufacturer
+                </label>
+                <input
+                  type="text"
+                  value={formData.type_specific_attributes.manufacturer || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('manufacturer', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., Cisco, Dell, Siemens"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Model
+                </label>
+                <input
+                  type="text"
+                  value={formData.type_specific_attributes.model || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('model', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Model number or name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Serial Number
+                </label>
+                <input
+                  type="text"
+                  value={formData.type_specific_attributes.serial_number || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('serial_number', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Unique serial number"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Purchase Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.type_specific_attributes.purchase_date || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('purchase_date', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Last Maintenance Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.type_specific_attributes.last_maintenance_date || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('last_maintenance_date', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Next Maintenance Due
+                </label>
+                <input
+                  type="date"
+                  value={formData.type_specific_attributes.next_maintenance_due || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('next_maintenance_due', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Operational Status
+                </label>
+                <select
+                  value={formData.type_specific_attributes.operational_status || ''}
+                  onChange={(e) => updateTypeSpecificAttribute('operational_status', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select Status</option>
+                  <option value="operational">Operational</option>
+                  <option value="maintenance">Under Maintenance</option>
+                  <option value="repair">Needs Repair</option>
+                  <option value="calibration">Needs Calibration</option>
+                  <option value="standby">Standby</option>
+                  <option value="decommissioned">Decommissioned</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        );
+      
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
@@ -314,7 +709,7 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit, assetToE
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                <Building className="w-5 h-5 text-white" />
+                {getAssetTypeIcon()}
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">{assetToEdit ? 'Edit Asset' : 'Add New Asset'}</h2>
@@ -366,7 +761,11 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit, assetToE
                 <select
                   required
                   value={formData.type}
-                  onChange={(e) => updateFormData('type', e.target.value)}
+                  onChange={(e) => {
+                    updateFormData('type', e.target.value as 'building' | 'vehicle' | 'equipment');
+                    // Reset type-specific attributes when type changes
+                    updateFormData('type_specific_attributes', {});
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   {assetTypes.map(type => (
@@ -382,7 +781,7 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit, assetToE
                 <select
                   required
                   value={formData.status}
-                  onChange={(e) => updateFormData('status', e.target.value)}
+                  onChange={(e) => updateFormData('status', e.target.value as 'secure' | 'alert' | 'maintenance' | 'offline' | 'compromised')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="secure">Secure</option>
@@ -394,6 +793,9 @@ const AddAssetForm: React.FC<AddAssetFormProps> = ({ onClose, onSubmit, assetToE
               </div>
             </div>
           </div>
+
+          {/* Type-specific fields */}
+          {renderTypeSpecificFields()}
 
           {/* Location Information */}
           <div>
