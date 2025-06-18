@@ -36,6 +36,7 @@ import MitigationDisplay from './MitigationDisplay';
 import { AppliedMitigation } from '../types/mitigation';
 import { useTravelPlans } from '../hooks/useTravelPlans';
 import Modal from './common/Modal';
+import ConfirmationModal from './common/ConfirmationModal';
 
 const TravelSecurityManagement: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
@@ -45,6 +46,8 @@ const TravelSecurityManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showNewPlanForm, setShowNewPlanForm] = useState(false);
   const [editingTravelPlan, setEditingTravelPlan] = useState<any | null>(null);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [travelPlanToDelete, setTravelPlanToDelete] = useState<{id: string, name: string} | null>(null);
 
   const { hasPermission } = useAuth();
   const { 
@@ -92,20 +95,20 @@ const TravelSecurityManagement: React.FC = () => {
     }
   };
 
-  const handleDeleteTravelPlan = async (planId: string, planName: string) => {
-    // Ask for confirmation before deleting
-    const confirmDelete = window.confirm(`Are you sure you want to delete the travel plan for "${planName}"? This action cannot be undone.`);
-    
-    if (!confirmDelete) {
-      return; // User cancelled the operation
-    }
+  const handleDeleteTravelPlan = (planId: string, planName: string) => {
+    setTravelPlanToDelete({ id: planId, name: planName });
+    setShowDeleteConfirmation(true);
+  };
+
+  const confirmDeleteTravelPlan = async () => {
+    if (!travelPlanToDelete) return;
     
     try {
       // Delete the travel plan from the database
-      await deleteTravelPlan(planId);
+      await deleteTravelPlan(travelPlanToDelete.id);
 
       // Close the detail view if the deleted plan was selected
-      if (selectedRequest?.id === planId) {
+      if (selectedRequest?.id === travelPlanToDelete.id) {
         setSelectedRequest(null);
       }
     } catch (err) {
@@ -803,6 +806,18 @@ const TravelSecurityManagement: React.FC = () => {
           )}
         </div>
       </Modal>
+
+      {/* Confirmation Modal for Delete */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onClose={() => setShowDeleteConfirmation(false)}
+        onConfirm={confirmDeleteTravelPlan}
+        title="Delete Travel Plan"
+        message={`Are you sure you want to delete the travel plan for "${travelPlanToDelete?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 };

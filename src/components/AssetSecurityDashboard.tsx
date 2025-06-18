@@ -43,6 +43,7 @@ import { AppliedMitigation } from '../types/mitigation';
 import AIRiskInsights from './AIRiskInsights';
 import { useAssets } from '../hooks/useAssets';
 import Modal from './common/Modal';
+import ConfirmationModal from './common/ConfirmationModal';
 
 const AssetSecurityDashboard: React.FC = () => {
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
@@ -55,6 +56,8 @@ const AssetSecurityDashboard: React.FC = () => {
   const [sortField, setSortField] = useState<string>('ai_risk_score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showAddAssetForm, setShowAddAssetForm] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [assetToDelete, setAssetToDelete] = useState<{id: string, name: string} | null>(null);
 
   const { hasPermission } = useAuth();
   const { 
@@ -92,20 +95,20 @@ const AssetSecurityDashboard: React.FC = () => {
     setShowAddAssetForm(true);
   };
 
-  const handleDeleteAsset = async (assetId: string, assetName: string) => {
-    // Ask for confirmation before deleting
-    const confirmDelete = window.confirm(`Are you sure you want to delete the asset "${assetName}"? This action cannot be undone.`);
-    
-    if (!confirmDelete) {
-      return; // User cancelled the operation
-    }
+  const handleDeleteAsset = (assetId: string, assetName: string) => {
+    setAssetToDelete({ id: assetId, name: assetName });
+    setShowDeleteConfirmation(true);
+  };
+
+  const confirmDeleteAsset = async () => {
+    if (!assetToDelete) return;
     
     try {
       // Delete the asset from the database
-      await deleteAsset(assetId);
+      await deleteAsset(assetToDelete.id);
 
       // Close the detail view if the deleted asset was selected
-      if (selectedAsset?.id === assetId) {
+      if (selectedAsset?.id === assetToDelete.id) {
         setSelectedAsset(null);
       }
     } catch (err) {
@@ -912,6 +915,18 @@ const AssetSecurityDashboard: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Confirmation Modal for Delete */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onClose={() => setShowDeleteConfirmation(false)}
+        onConfirm={confirmDeleteAsset}
+        title="Delete Asset"
+        message={`Are you sure you want to delete "${assetToDelete?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 };

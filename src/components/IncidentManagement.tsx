@@ -30,6 +30,7 @@ import { useDepartments } from '../hooks/useDepartments';
 import { useIncidents } from '../hooks/useIncidents';
 import AddEditIncidentForm from './AddEditIncidentForm';
 import Modal from './common/Modal';
+import ConfirmationModal from './common/ConfirmationModal';
 
 const IncidentManagement: React.FC = () => {
   const [showReportForm, setShowReportForm] = useState(false);
@@ -41,6 +42,8 @@ const IncidentManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<string>('date_time');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [incidentToDelete, setIncidentToDelete] = useState<{id: string, title: string} | null>(null);
 
   const { user, profile, hasPermission } = useAuth();
   const { departments } = useDepartments();
@@ -75,20 +78,19 @@ const IncidentManagement: React.FC = () => {
     }
   };
 
-  const handleDeleteIncident = async (incidentId: string, incidentTitle: string) => {
-    // Ask for confirmation before deleting
-    const confirmDelete = window.confirm(`Are you sure you want to delete the incident "${incidentTitle}"? This action cannot be undone.`);
-    
-    if (!confirmDelete) {
-      return; // User cancelled the operation
-    }
+  const handleDeleteIncident = (incidentId: string, incidentTitle: string) => {
+    setIncidentToDelete({ id: incidentId, title: incidentTitle });
+    setShowDeleteConfirmation(true);
+  };
+
+  const confirmDeleteIncident = async () => {
+    if (!incidentToDelete) return;
     
     try {
-      // Delete the incident
-      await deleteIncident(incidentId);
+      await deleteIncident(incidentToDelete.id);
 
       // Close the detail view if the deleted incident was selected
-      if (selectedIncident?.id === incidentId) {
+      if (selectedIncident?.id === incidentToDelete.id) {
         setSelectedIncident(null);
       }
     } catch (err) {
@@ -697,6 +699,18 @@ const IncidentManagement: React.FC = () => {
           )}
         </div>
       </Modal>
+
+      {/* Confirmation Modal for Delete */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onClose={() => setShowDeleteConfirmation(false)}
+        onConfirm={confirmDeleteIncident}
+        title="Delete Incident"
+        message={`Are you sure you want to delete the incident "${incidentToDelete?.title}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 };

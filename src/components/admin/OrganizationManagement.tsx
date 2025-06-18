@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { supabase, Database } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import ConfirmationModal from '../common/ConfirmationModal';
 
 type Organization = Database['public']['Tables']['organizations']['Row'];
 
@@ -36,6 +37,8 @@ const OrganizationManagement: React.FC = () => {
     settings: {}
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [orgToDelete, setOrgToDelete] = useState<{id: string, name: string} | null>(null);
 
   const { hasPermission, user } = useAuth();
 
@@ -164,23 +167,26 @@ const OrganizationManagement: React.FC = () => {
     }
   };
 
-  const handleDeleteOrganization = async (organizationId: string) => {
-    if (!confirm('Are you sure you want to delete this organization? This will delete ALL data associated with this organization and cannot be undone.')) {
-      return;
-    }
+  const handleDeleteOrganization = (organizationId: string, organizationName: string) => {
+    setOrgToDelete({ id: organizationId, name: organizationName });
+    setShowDeleteConfirmation(true);
+  };
 
+  const confirmDeleteOrganization = async () => {
+    if (!orgToDelete) return;
+    
     try {
       // Get organization details before deletion for audit log
       const { data: orgToDelete } = await supabase
         .from('organizations')
         .select('name, plan_type')
-        .eq('id', organizationId)
+        .eq('id', orgToDelete.id)
         .single();
       
       const { error } = await supabase
         .from('organizations')
         .delete()
-        .eq('id', organizationId);
+        .eq('id', orgToDelete.id);
 
       if (error) {
         throw error;
@@ -188,7 +194,7 @@ const OrganizationManagement: React.FC = () => {
 
       // Log the organization deletion in audit logs
       if (orgToDelete) {
-        await logAuditEvent('organization_deleted', organizationId, {
+        await logAuditEvent('organization_deleted', orgToDelete.id, {
           org_name: orgToDelete.name,
           plan_type: orgToDelete.plan_type,
           deleted_at: new Date().toISOString()
@@ -399,7 +405,7 @@ const OrganizationManagement: React.FC = () => {
                       )}
                       {hasPermission('organizations.delete') && (
                         <button
-                          onClick={() => handleDeleteOrganization(org.id)}
+                          onClick={() => handleDeleteOrganization(org.id, org.name)}
                           className="text-red-600 hover:text-red-900"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -592,6 +598,18 @@ const OrganizationManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal for Delete */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onClose={() => setShowDeleteConfirmation(false)}
+        onConfirm={confirmDeleteOrganization}
+        title="Delete Organization"
+        message={`Are you sure you want to delete "${orgToDelete?.name}"? This will delete ALL data associated with this organization and cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 };

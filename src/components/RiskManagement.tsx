@@ -30,6 +30,7 @@ import { useRisks } from '../hooks/useRisks';
 import Modal from './common/Modal';
 import MitigationDisplay from './MitigationDisplay';
 import { AppliedMitigation } from '../types/mitigation';
+import ConfirmationModal from './common/ConfirmationModal';
 
 type Risk = any;
 
@@ -44,6 +45,8 @@ const RiskManagement: React.FC = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [editingRisk, setEditingRisk] = useState<Risk | null>(null);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [riskToDelete, setRiskToDelete] = useState<{id: string, title: string} | null>(null);
 
   const { user, profile, hasPermission } = useAuth();
   const { 
@@ -94,17 +97,20 @@ const RiskManagement: React.FC = () => {
     }
   };
 
-  const handleDeleteRisk = async (riskId: string, riskTitle: string) => {
-    if (!confirm('Are you sure you want to delete this risk? This action cannot be undone.')) {
-      return;
-    }
+  const handleDeleteRisk = (riskId: string, riskTitle: string) => {
+    setRiskToDelete({ id: riskId, title: riskTitle });
+    setShowDeleteConfirmation(true);
+  };
 
+  const confirmDeleteRisk = async () => {
+    if (!riskToDelete) return;
+    
     try {
       // Delete the risk
-      await deleteRisk(riskId);
+      await deleteRisk(riskToDelete.id);
 
       // Close the detail view if the deleted risk was selected
-      if (selectedRisk?.id === riskId) {
+      if (selectedRisk?.id === riskToDelete.id) {
         setSelectedRisk(null);
       }
     } catch (err) {
@@ -685,6 +691,18 @@ const RiskManagement: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Confirmation Modal for Delete */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onClose={() => setShowDeleteConfirmation(false)}
+        onConfirm={confirmDeleteRisk}
+        title="Delete Risk"
+        message={`Are you sure you want to delete the risk "${riskToDelete?.title}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 };

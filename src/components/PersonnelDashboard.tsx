@@ -44,6 +44,7 @@ import { AppliedMitigation } from '../types/mitigation';
 import { usePersonnel } from '../hooks/usePersonnel';
 import Modal from './common/Modal';
 import { supabase } from '../lib/supabase';
+import ConfirmationModal from './common/ConfirmationModal';
 
 const PersonnelDashboard: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -54,6 +55,8 @@ const PersonnelDashboard: React.FC = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPersonnel, setEditingPersonnel] = useState<any | null>(null);
   const [workAssets, setWorkAssets] = useState<{[key: string]: string}>({});
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [personnelToDelete, setPersonnelToDelete] = useState<{id: string, name: string} | null>(null);
 
   const { hasPermission } = useAuth();
   const { 
@@ -133,19 +136,19 @@ const PersonnelDashboard: React.FC = () => {
     setShowAddForm(true);
   };
 
-  const handleDeletePersonnel = async (id: string, name: string) => {
-    // Ask for confirmation before deleting
-    const confirmDelete = window.confirm(`Are you sure you want to delete ${name}? This action cannot be undone.`);
-    
-    if (!confirmDelete) {
-      return; // User cancelled the operation
-    }
+  const handleDeletePersonnel = (id: string, name: string) => {
+    setPersonnelToDelete({ id, name });
+    setShowDeleteConfirmation(true);
+  };
+
+  const confirmDeletePersonnel = async () => {
+    if (!personnelToDelete) return;
     
     try {
-      await deletePersonnel(id);
+      await deletePersonnel(personnelToDelete.id);
       
       // Close the detail view if the deleted personnel was selected
-      if (selectedPersonnel?.id === id) {
+      if (selectedPersonnel?.id === personnelToDelete.id) {
         setSelectedPersonnel(null);
       }
     } catch (err) {
@@ -914,6 +917,18 @@ const PersonnelDashboard: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Confirmation Modal for Delete */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onClose={() => setShowDeleteConfirmation(false)}
+        onConfirm={confirmDeletePersonnel}
+        title="Delete Personnel"
+        message={`Are you sure you want to delete ${personnelToDelete?.name}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 };
