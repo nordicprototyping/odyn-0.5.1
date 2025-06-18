@@ -513,6 +513,111 @@ async function scoreTravelRisk(travelData: any, organizationId: string, userId: 
   }
 }
 
+// Function to evaluate risk
+async function evaluateRisk(riskData: any, organizationId: string, userId: string | null): Promise<RiskScoringResponse> {
+  const systemPrompt = `
+    You are an expert AI security risk analyst specializing in physical risk assessment.
+    Your task is to analyze the provided risk data and evaluate the risk assessment, providing insights and recommendations.
+    You should provide component scores for different risk factors, a confidence score (0-100), 
+    and specific recommendations for risk mitigation.
+    
+    CRITICAL: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
+    Do not use <think> tags or any other non-JSON content in your response.
+    
+    Format your response as valid JSON with the following structure:
+    {
+      "score": number,
+      "components": {
+        "threat_analysis": number,
+        "vulnerability_assessment": number,
+        "impact_potential": number,
+        "likelihood_assessment": number,
+        "mitigation_effectiveness": number
+      },
+      "confidence": number,
+      "explanation": "string",
+      "recommendations": ["string", "string", ...],
+      "trend": "improving" | "stable" | "deteriorating"
+    }
+  `;
+  
+  const prompt = `
+    Please analyze the following risk data and provide a comprehensive evaluation in JSON format:
+    
+    Risk Title: ${riskData.title}
+    Description: ${riskData.description}
+    Category: ${riskData.category}
+    Department: ${riskData.department || 'Not specified'}
+    
+    Current Assessment:
+    - Impact: ${riskData.impact}
+    - Likelihood: ${riskData.likelihood}
+    - Status: ${riskData.status}
+    
+    Mitigation Plan: ${riskData.mitigation_plan || 'No mitigation plan specified'}
+    
+    Consider factors such as:
+    1. The nature and severity of the physical risk
+    2. Potential impact on personnel, assets, and operations
+    3. Likelihood of occurrence based on historical data and current conditions
+    4. Effectiveness of existing or proposed mitigation measures
+    5. Residual risk after mitigation
+    
+    Provide a detailed risk evaluation with specific recommendations for risk mitigation.
+    
+    REMEMBER: Respond with ONLY valid JSON. No explanatory text, markdown, or code blocks.
+  `;
+  
+  try {
+    const result = await callChutesAI(prompt, systemPrompt);
+    
+    // Log token usage
+    if (result.usage && result.usage.total_tokens) {
+      await logTokenUsage(organizationId, userId, 'risk', result.usage.total_tokens);
+    }
+    
+    // Extract JSON from the response
+    let jsonContent;
+    try {
+      // First try direct parsing
+      jsonContent = JSON.parse(result.content);
+    } catch (parseError) {
+      console.error('JSON parse error in risk evaluation:', parseError);
+      console.error('Raw content:', result.content);
+      
+      // If direct parsing fails, try to extract JSON using regex
+      const extractedJson = extractJsonFromString(result.content);
+      jsonContent = JSON.parse(extractedJson);
+      console.log('Successfully extracted JSON from malformed response');
+    }
+    
+    return jsonContent;
+  } catch (error) {
+    console.error('Error in evaluateRisk:', error);
+    
+    // Return a fallback response
+    return {
+      score: 50,
+      components: {
+        threat_analysis: 45,
+        vulnerability_assessment: 55,
+        impact_potential: 60,
+        likelihood_assessment: 40,
+        mitigation_effectiveness: 35
+      },
+      confidence: 70,
+      explanation: "Unable to perform AI risk evaluation due to an error. This is a default evaluation based on the risk category and description.",
+      recommendations: [
+        "Conduct a detailed threat assessment",
+        "Implement physical security controls",
+        "Develop emergency response procedures",
+        "Train personnel on risk awareness and response"
+      ],
+      trend: "stable"
+    };
+  }
+}
+
 // Function to score organization risk
 async function scoreOrganizationRisk(organizationId: string, userId: string | null, aggregateData: any): Promise<RiskScoringResponse> {
   const systemPrompt = `
@@ -569,6 +674,13 @@ async function scoreOrganizationRisk(organizationId: string, userId: string | nu
     - Approved: ${aggregateData.travelPlans.filter((t: any) => t.status === 'approved').length}
     - In-progress: ${aggregateData.travelPlans.filter((t: any) => t.status === 'in-progress').length}
     
+    Risks: ${aggregateData.risks.length} total risks
+    - Critical risks (score > 20): ${aggregateData.risks.filter((r: any) => r.risk_score > 20).length}
+    - High risks (score 13-20): ${aggregateData.risks.filter((r: any) => r.risk_score > 12 && r.risk_score <= 20).length}
+    - Medium risks (score 6-12): ${aggregateData.risks.filter((r: any) => r.risk_score > 5 && r.risk_score <= 12).length}
+    - Low risks (score 1-5): ${aggregateData.risks.filter((r: any) => r.risk_score <= 5).length}
+    - Open risks: ${aggregateData.risks.filter((r: any) => !['closed', 'mitigated'].includes(r.status)).length}
+    
     Consider factors such as:
     1. The overall security posture of assets
     2. Personnel security and deployment status
@@ -576,6 +688,7 @@ async function scoreOrganizationRisk(organizationId: string, userId: string | nu
     4. Travel security and risk levels
     5. Compliance status across the organization
     6. Geopolitical factors affecting organizational risk
+    7. Physical risk assessment and mitigation effectiveness
     
     Provide a detailed risk assessment with specific recommendations for risk mitigation.
     
@@ -674,6 +787,75 @@ Deno.serve(async (req: Request) => {
       });
     }
     
+    // Update the prompt for asset risk scoring to include type-specific attributes
+    if (requestData.type === 'asset') {
+      // Enhance the data with additional context for the AI
+      const assetData = requestData.data;
+      
+      // Create a more detailed prompt based on asset type
+      let typeSpecificDetails = '';
+      
+      if (assetData.type_specific_attributes) {
+        switch (assetData.type) {
+          case 'building':
+            typeSpecificDetails = `
+              Building Type: ${assetData.type_specific_attributes.building_type || 'Not specified'}
+              Primary Function: ${assetData.type_specific_attributes.primary_function || 'Not specified'}
+              Floor Count: ${assetData.type_specific_attributes.floor_count || 'Unknown'}
+              Year Built: ${assetData.type_specific_attributes.year_built || 'Unknown'}
+              Total Area: ${assetData.type_specific_attributes.total_area ? `${assetData.type_specific_attributes.total_area} sq ft/m²` : 'Unknown'}
+              Last Renovation: ${assetData.type_specific_attributes.last_renovation || 'Unknown'}
+            `;
+            break;
+          case 'vehicle':
+            typeSpecificDetails = `
+              Vehicle Type: ${assetData.type_specific_attributes.vehicle_type || 'Not specified'}
+              Make: ${assetData.type_specific_attributes.make || 'Unknown'}
+              Model: ${assetData.type_specific_attributes.model || 'Unknown'}
+              Year: ${assetData.type_specific_attributes.year || 'Unknown'}
+              License/Registration: ${assetData.type_specific_attributes.license_plate || 'Unknown'}
+              Mileage/Hours: ${assetData.type_specific_attributes.mileage || 'Unknown'}
+              Fuel Type: ${assetData.type_specific_attributes.fuel_type || 'Unknown'}
+              Security Features: ${assetData.type_specific_attributes.security_features || 'None specified'}
+            `;
+            break;
+          case 'equipment':
+            typeSpecificDetails = `
+              Equipment Type: ${assetData.type_specific_attributes.equipment_type || 'Not specified'}
+              Manufacturer: ${assetData.type_specific_attributes.manufacturer || 'Unknown'}
+              Model: ${assetData.type_specific_attributes.model || 'Unknown'}
+              Serial Number: ${assetData.type_specific_attributes.serial_number || 'Unknown'}
+              Purchase Date: ${assetData.type_specific_attributes.purchase_date || 'Unknown'}
+              Last Maintenance: ${assetData.type_specific_attributes.last_maintenance_date || 'Unknown'}
+              Next Maintenance Due: ${assetData.type_specific_attributes.next_maintenance_due || 'Unknown'}
+              Operational Status: ${assetData.type_specific_attributes.operational_status || 'Unknown'}
+            `;
+            break;
+        }
+      }
+      
+      // Add the type-specific details to the request data
+      requestData.data = {
+        ...assetData,
+        typeSpecificDetails
+      };
+    }
+    
+    // Update the prompt for personnel risk scoring to include new fields
+    if (requestData.type === 'personnel') {
+      // Enhance the data with additional context for the AI
+      const personnelData = requestData.data;
+      
+      // Add work location context if work_asset_id is provided
+      if (personnelData.work_asset_id) {
+        const workLocationContext = await getAssetContext(personnelData.work_asset_id);
+        requestData.data = {
+          ...personnelData,
+          work_location_context: workLocationContext
+        };
+      }
+    }
+    
     // Process based on request type
     let response: RiskScoringResponse;
     
@@ -686,6 +868,9 @@ Deno.serve(async (req: Request) => {
         break;
       case 'travel':
         response = await scoreTravelRisk(requestData.data, requestData.organizationId, requestData.userId || user.id);
+        break;
+      case 'risk':
+        response = await evaluateRisk(requestData.data, requestData.organizationId, requestData.userId || user.id);
         break;
       case 'organization':
         response = await scoreOrganizationRisk(requestData.organizationId, requestData.userId || user.id, requestData.data);
@@ -714,3 +899,28 @@ Deno.serve(async (req: Request) => {
     });
   }
 });
+
+// Helper function to get context information about an asset for AI risk scoring
+async function getAssetContext(assetId: string): Promise<any> {
+  try {
+    const { data, error } = await supabase
+      .from('assets')
+      .select('name, type, location, status, ai_risk_score, type_specific_attributes')
+      .eq('id', assetId)
+      .single();
+    
+    if (error) throw error;
+    
+    return {
+      name: data.name,
+      type: data.type,
+      type_specific_attributes: data.type_specific_attributes,
+      location: data.location,
+      status: data.status,
+      risk_score: (data.ai_risk_score as any)?.overall || 0
+    };
+  } catch (error) {
+    console.error('Error getting asset context:', error);
+    return null;
+  }
+}

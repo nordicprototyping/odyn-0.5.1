@@ -21,12 +21,15 @@ import {
   X,
   ChevronDown,
   ChevronRight,
-  Loader2
+  Loader2,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import AddEditRiskForm from './AddEditRiskForm';
 import { useRisks } from '../hooks/useRisks';
 import Modal from './common/Modal';
+import MitigationDisplay from './MitigationDisplay';
+import { AppliedMitigation } from '../types/mitigation';
 
 type Risk = any;
 
@@ -59,7 +62,7 @@ const RiskManagement: React.FC = () => {
       const riskData = {
         ...formData,
         organization_id: profile?.organization_id || '',
-        identified_by_user_id: user?.id || null,
+        identified_by_user_id: formData.identified_by_user_id || user?.id || null,
         owner_user_id: formData.owner_user_id || user?.id || null,
         department: formData.department || profile?.department || null
       };
@@ -179,6 +182,18 @@ const RiskManagement: React.FC = () => {
       case 'monitoring': return <Activity className="w-4 h-4" />;
       case 'closed': return <XCircle className="w-4 h-4" />;
       default: return <Clock className="w-4 h-4" />;
+    }
+  };
+
+  const getCategoryLabel = (category: string): string => {
+    switch (category) {
+      case 'physical_security_vulnerabilities': return 'Physical Security Vulnerabilities';
+      case 'environmental_hazards': return 'Environmental Hazards';
+      case 'natural_disasters': return 'Natural Disasters';
+      case 'infrastructure_failure': return 'Infrastructure Failure';
+      case 'personnel_safety_security': return 'Personnel Safety & Security';
+      case 'asset_damage_loss': return 'Asset Damage/Loss';
+      default: return category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     }
   };
 
@@ -362,14 +377,12 @@ const RiskManagement: React.FC = () => {
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="all">All Categories</option>
-              <option value="operational">Operational</option>
-              <option value="financial">Financial</option>
-              <option value="strategic">Strategic</option>
-              <option value="compliance">Compliance</option>
-              <option value="security">Security</option>
-              <option value="technical">Technical</option>
-              <option value="environmental">Environmental</option>
-              <option value="reputational">Reputational</option>
+              <option value="physical_security_vulnerabilities">Physical Security Vulnerabilities</option>
+              <option value="environmental_hazards">Environmental Hazards</option>
+              <option value="natural_disasters">Natural Disasters</option>
+              <option value="infrastructure_failure">Infrastructure Failure</option>
+              <option value="personnel_safety_security">Personnel Safety & Security</option>
+              <option value="asset_damage_loss">Asset Damage/Loss</option>
             </select>
             
             <select
@@ -460,6 +473,9 @@ const RiskManagement: React.FC = () => {
                   Owner
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Department
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Due Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -482,8 +498,8 @@ const RiskManagement: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-700 capitalize">
-                      {risk.category}
+                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
+                      {getCategoryLabel(risk.category)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -505,7 +521,12 @@ const RiskManagement: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center text-sm text-gray-900">
                       <User className="w-4 h-4 mr-1 text-gray-400" />
-                      {risk.department || 'Unassigned'}
+                      {risk.user_profiles?.full_name || 'Unassigned'}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {risk.department || 'Not assigned'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -587,13 +608,25 @@ const RiskManagement: React.FC = () => {
                   <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getRiskLevelColor(selectedRisk?.risk_score)}`}>
                     Risk Score: {selectedRisk?.risk_score}
                   </span>
-                  <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-700 capitalize">
-                    {selectedRisk?.category}
+                  <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
+                    {selectedRisk?.category && getCategoryLabel(selectedRisk.category)}
                   </span>
                 </div>
               </div>
             </div>
             <div className="flex items-center space-x-2">
+              {hasPermission('risks.update') && (
+                <button
+                  onClick={() => {
+                    openEditForm(selectedRisk);
+                    setSelectedRisk(null);
+                  }}
+                  className="p-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  title="Edit risk"
+                >
+                  <Edit className="w-5 h-5" />
+                </button>
+              )}
               {hasPermission('risks.delete') && (
                 <button
                   onClick={() => {
@@ -615,6 +648,17 @@ const RiskManagement: React.FC = () => {
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Description</h3>
             <p className="text-gray-700">{selectedRisk?.description}</p>
           </div>
+          
+          {/* Applied Mitigations */}
+          {selectedRisk?.mitigations && (selectedRisk?.mitigations as AppliedMitigation[]).length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Applied Mitigations</h3>
+              <MitigationDisplay 
+                mitigations={selectedRisk?.mitigations as AppliedMitigation[]}
+                showCategory={true}
+              />
+            </div>
+          )}
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -640,6 +684,12 @@ const RiskManagement: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-500">Department</span>
                   <span className="text-sm text-gray-900">{selectedRisk?.department || 'Not assigned'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500">Owner</span>
+                  <span className="text-sm text-gray-900">
+                    {selectedRisk?.user_profiles?.full_name || 'Not assigned'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-500">Due Date</span>

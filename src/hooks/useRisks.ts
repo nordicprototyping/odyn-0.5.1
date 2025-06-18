@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from './useAuth';
+import { AppliedMitigation } from '../types/mitigation';
 
 type Risk = Database['public']['Tables']['risks']['Row'];
 type RiskInsert = Database['public']['Tables']['risks']['Insert'];
@@ -19,7 +20,7 @@ export function useRisks() {
       
       const { data, error: fetchError } = await supabase
         .from('risks')
-        .select('*')
+        .select('*, user_profiles!owner_user_id(full_name), user_profiles!identified_by_user_id(full_name)')
         .order('created_at', { ascending: false });
 
       if (fetchError) {

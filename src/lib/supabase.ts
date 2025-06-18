@@ -559,7 +559,7 @@ export interface Database {
           organization_id: string;
           title: string;
           description: string;
-          category: 'operational' | 'financial' | 'strategic' | 'compliance' | 'security' | 'technical' | 'environmental' | 'reputational';
+          category: 'physical_security_vulnerabilities' | 'environmental_hazards' | 'natural_disasters' | 'infrastructure_failure' | 'personnel_safety_security' | 'asset_damage_loss';
           status: 'identified' | 'assessed' | 'mitigated' | 'monitoring' | 'closed';
           impact: 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
           likelihood: 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
@@ -579,7 +579,7 @@ export interface Database {
           organization_id: string;
           title: string;
           description: string;
-          category: 'operational' | 'financial' | 'strategic' | 'compliance' | 'security' | 'technical' | 'environmental' | 'reputational';
+          category: 'physical_security_vulnerabilities' | 'environmental_hazards' | 'natural_disasters' | 'infrastructure_failure' | 'personnel_safety_security' | 'asset_damage_loss';
           status?: 'identified' | 'assessed' | 'mitigated' | 'monitoring' | 'closed';
           impact: 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
           likelihood: 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
@@ -599,7 +599,7 @@ export interface Database {
           organization_id?: string;
           title?: string;
           description?: string;
-          category?: 'operational' | 'financial' | 'strategic' | 'compliance' | 'security' | 'technical' | 'environmental' | 'reputational';
+          category?: 'physical_security_vulnerabilities' | 'environmental_hazards' | 'natural_disasters' | 'infrastructure_failure' | 'personnel_safety_security' | 'asset_damage_loss';
           status?: 'identified' | 'assessed' | 'mitigated' | 'monitoring' | 'closed';
           impact?: 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
           likelihood?: 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
