@@ -27,7 +27,7 @@ export async function globalSearch(searchTerm: string, limit: number = 20): Prom
     const { data: assets } = await supabase
       .from('assets')
       .select('id, name, type, status, location, ai_risk_score')
-      .or(`name.ilike.%${searchTermLower}%, type.ilike.%${searchTermLower}%`)
+      .or(`name.ilike.%${searchTermLower}%, type::text.ilike.%${searchTermLower}%`)
       .limit(limit);
 
     if (assets) {
