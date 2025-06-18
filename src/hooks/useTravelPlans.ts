@@ -1,63 +1,38 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase, Database } from '../lib/supabase';
-import { useAuth } from './useAuth';
+import { useCallback } from 'react';
+import { Database } from '../lib/supabase';
+import { useSupabaseCRUD } from './useSupabaseCRUD';
+import { AuditService } from '../services/auditService';
 
 type TravelPlan = Database['public']['Tables']['travel_plans']['Row'];
 type TravelPlanInsert = Database['public']['Tables']['travel_plans']['Insert'];
 type TravelPlanUpdate = Database['public']['Tables']['travel_plans']['Update'];
 
 export function useTravelPlans() {
-  const [travelPlans, setTravelPlans] = useState<TravelPlan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, profile } = useAuth();
+  const {
+    data: travelPlans,
+    loading,
+    error,
+    fetchData,
+    addItem,
+    updateItem,
+    deleteItem
+  } = useSupabaseCRUD<TravelPlan, TravelPlanInsert, TravelPlanUpdate>('travel_plans', {
+    defaultQueryOptions: {
+      order: { column: 'created_at', ascending: false }
+    }
+  });
 
   const fetchTravelPlans = useCallback(async () => {
+    await fetchData();
+  }, [fetchData]);
+
+  const addTravelPlan = useCallback(async (travelPlanData: TravelPlanInsert) => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      const { data, error: fetchError } = await supabase
-        .from('travel_plans')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      setTravelPlans(data || []);
-    } catch (err) {
-      console.error('Error fetching travel plans:', err);
-      setError('Failed to load travel plan data');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTravelPlans();
-  }, [fetchTravelPlans]);
-
-  const addTravelPlan = async (travelPlanData: TravelPlanInsert) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error } = await supabase
-        .from('travel_plans')
-        .insert([travelPlanData])
-        .select();
-
-      if (error) {
-        throw error;
-      }
-
-      setTravelPlans(prev => [...(data || []), ...prev]);
+      const newTravelPlan = await addItem(travelPlanData);
       
       // Log the travel plan creation in audit logs
-      if (data?.[0]) {
-        await logAuditEvent('travel_plan_created', data[0].id, { 
+      if (newTravelPlan) {
+        await AuditService.logTravel('travel_plan_created', newTravelPlan.id, { 
           traveler_name: travelPlanData.traveler_name,
           destination: travelPlanData.destination,
           departure_date: travelPlanData.departure_date,
@@ -65,118 +40,56 @@ export function useTravelPlans() {
         });
       }
       
-      return data?.[0] || null;
+      return newTravelPlan;
     } catch (err) {
       console.error('Error adding travel plan:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add travel plan');
       throw err;
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [addItem]);
 
-  const updateTravelPlan = async (id: string, travelPlanData: TravelPlanUpdate) => {
+  const updateTravelPlan = useCallback(async (id: string, travelPlanData: TravelPlanUpdate) => {
     try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error } = await supabase
-        .from('travel_plans')
-        .update(travelPlanData)
-        .eq('id', id)
-        .select();
-
-      if (error) {
-        throw error;
-      }
-
-      setTravelPlans(prev => prev.map(plan => plan.id === id ? (data?.[0] || plan) : plan));
+      const updatedTravelPlan = await updateItem(id, travelPlanData);
       
       // Log the travel plan update in audit logs
-      if (data?.[0]) {
-        await logAuditEvent('travel_plan_updated', data[0].id, { 
-          traveler_name: travelPlanData.traveler_name || data[0].traveler_name,
-          destination: travelPlanData.destination || data[0].destination,
-          status: travelPlanData.status || data[0].status,
+      if (updatedTravelPlan) {
+        await AuditService.logTravel('travel_plan_updated', updatedTravelPlan.id, { 
+          traveler_name: travelPlanData.traveler_name || updatedTravelPlan.traveler_name,
+          destination: travelPlanData.destination || updatedTravelPlan.destination,
+          status: travelPlanData.status || updatedTravelPlan.status,
           updated_fields: Object.keys(travelPlanData).filter(k => k !== 'id' && k !== 'organization_id')
         });
       }
       
-      return data?.[0] || null;
+      return updatedTravelPlan;
     } catch (err) {
       console.error('Error updating travel plan:', err);
-      setError(err instanceof Error ? err.message : 'Failed to update travel plan');
       throw err;
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [updateItem]);
 
-  const deleteTravelPlan = async (id: string) => {
+  const deleteTravelPlan = useCallback(async (id: string) => {
     try {
-      setLoading(true);
-      setError(null);
-      
       // Get travel plan details before deletion for audit log
-      const { data: planToDelete } = await supabase
-        .from('travel_plans')
-        .select('traveler_name, destination')
-        .eq('id', id)
-        .single();
-
-      const { error } = await supabase
-        .from('travel_plans')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        throw error;
-      }
-
-      setTravelPlans(prev => prev.filter(plan => plan.id !== id));
+      const travelPlan = travelPlans.find(tp => tp.id === id);
+      
+      await deleteItem(id);
       
       // Log the travel plan deletion in audit logs
-      if (planToDelete) {
-        await logAuditEvent('travel_plan_deleted', id, { 
-          traveler_name: planToDelete.traveler_name,
-          destination: planToDelete.destination,
+      if (travelPlan) {
+        await AuditService.logTravel('travel_plan_deleted', id, { 
+          traveler_name: travelPlan.traveler_name,
+          destination: travelPlan.destination,
           deleted_at: new Date().toISOString()
         });
       }
+      
+      return true;
     } catch (err) {
       console.error('Error deleting travel plan:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete travel plan');
       throw err;
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
-    if (!profile?.organization_id) {
-      console.warn('Cannot log audit event: no organization ID available');
-      return;
-    }
-    
-    try {
-      const { error } = await supabase.from('audit_logs').insert({
-        user_id: user?.id || null,
-        organization_id: profile.organization_id,
-        action,
-        resource_type: 'travel_plan',
-        resource_id: resourceId,
-        details,
-        ip_address: null,
-        user_agent: navigator.userAgent
-      });
-
-      if (error) {
-        console.error('Error logging audit event:', error);
-      }
-    } catch (error) {
-      console.error('Unexpected error logging audit event:', error);
-    }
-  };
+  }, [travelPlans, deleteItem]);
 
   return {
     travelPlans,
@@ -186,6 +99,6 @@ export function useTravelPlans() {
     addTravelPlan,
     updateTravelPlan,
     deleteTravelPlan,
-    logAuditEvent
+    logAuditEvent: AuditService.logTravel // Keep for backward compatibility
   };
 }
