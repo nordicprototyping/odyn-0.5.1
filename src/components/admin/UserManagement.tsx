@@ -15,10 +15,12 @@ import {
   XCircle,
   Crown,
   UserCheck,
-  Settings
+  Settings,
+  Inbox
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, Database } from '../../lib/supabase';
+import InvitationManagement from './InvitationManagement';
 
 type UserProfile = Database['public']['Tables']['user_profiles']['Row'];
 
@@ -40,6 +42,8 @@ const UserManagement: React.FC = () => {
     department: '',
     phone: ''
   });
+  const [activeTab, setActiveTab] = useState<'users' | 'invitations'>('users');
+  const [showInviteForm, setShowInviteForm] = useState(false);
 
   const { hasPermission, profile, user } = useAuth();
 
@@ -307,301 +311,348 @@ const UserManagement: React.FC = () => {
           <p className="text-gray-600">Manage user accounts, roles, and permissions</p>
         </div>
         {hasPermission('users.create') && (
-          <button className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+          <button 
+            onClick={() => {
+              setActiveTab('invitations');
+              setShowInviteForm(true);
+            }}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
             <Plus className="w-4 h-4" />
-            <span>Add User</span>
+            <span>Invite User</span>
           </button>
         )}
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Total Users</p>
-              <p className="text-2xl font-bold text-gray-900">{userStats.total}</p>
-            </div>
-            <Users className="w-8 h-8 text-blue-500" />
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Active</p>
-              <p className="text-2xl font-bold text-green-600">{userStats.active}</p>
-            </div>
-            <CheckCircle className="w-8 h-8 text-green-500" />
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Locked</p>
-              <p className="text-2xl font-bold text-red-600">{userStats.locked}</p>
-            </div>
-            <XCircle className="w-8 h-8 text-red-500" />
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Admins</p>
-              <p className="text-2xl font-bold text-purple-600">{userStats.admins}</p>
-            </div>
-            <Shield className="w-8 h-8 text-purple-500" />
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">2FA Enabled</p>
-              <p className="text-2xl font-bold text-blue-600">{userStats.twoFactorEnabled}</p>
-            </div>
-            <Shield className="w-8 h-8 text-blue-500" />
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center space-y-4 sm:space-y-0 sm:space-x-4">
-          <div className="relative flex-1">
-            <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search users..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          
-          <select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="flex space-x-8">
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'users'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
           >
-            <option value="all">All Roles</option>
-            <option value="super_admin">Super Admin</option>
-            <option value="admin">Admin</option>
-            <option value="manager">Manager</option>
-            <option value="user">User</option>
-          </select>
-        </div>
+            <div className="flex items-center space-x-2">
+              <Users className="w-5 h-5" />
+              <span>Users</span>
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('invitations')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'invitations'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              <Inbox className="w-5 h-5" />
+              <span>Invitations</span>
+            </div>
+          </button>
+        </nav>
       </div>
 
-      {/* Users Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  User
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Role
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Department
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  2FA
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Last Login
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredUsers.map((user) => {
-                const isLocked = user.account_locked_until && new Date(user.account_locked_until) > new Date();
-                
-                return (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-                          <span className="text-white font-semibold text-sm">
-                            {user.full_name.split(' ').map(n => n[0]).join('')}
-                          </span>
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{user.full_name}</div>
-                          <div className="text-sm text-gray-500">{user.email}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-2">
-                        {getRoleIcon(user.role)}
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getRoleColor(user.role)}`}>
-                          {user.role.replace('_', ' ').toUpperCase()}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{user.department || 'Not assigned'}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-2">
-                        {getStatusIcon(user)}
-                        <span className={`text-sm ${
-                          isLocked ? 'text-red-600' : 
-                          user.email_confirmed_at ? 'text-green-600' : 'text-yellow-600'
-                        }`}>
-                          {isLocked ? 'Locked' : 
-                           user.email_confirmed_at ? 'Active' : 'Pending'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.two_factor_enabled 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-gray-100 text-gray-700'
-                      }`}>
-                        {user.two_factor_enabled ? 'Enabled' : 'Disabled'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {user.last_sign_in_at 
-                          ? new Date(user.last_sign_in_at).toLocaleDateString()
-                          : 'Never'
-                        }
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center space-x-2">
-                        {hasPermission('users.update') && (
-                          <button
-                            onClick={() => handleEditUser(user)}
-                            className="text-blue-600 hover:text-blue-900"
-                            title="Edit user"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                        )}
-                        
-                        {hasPermission('users.update') && user.id !== profile?.id && (
-                          <>
-                            {isLocked ? (
-                              <button
-                                onClick={() => handleUnlockUser(user.id)}
-                                className="text-green-600 hover:text-green-900"
-                                title="Unlock user"
-                              >
-                                <CheckCircle className="w-4 h-4" />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleLockUser(user.id)}
-                                className="text-red-600 hover:text-red-900"
-                                title="Lock user"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Edit User Modal */}
-      {showEditModal && selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">Edit User</h2>
+      {activeTab === 'users' ? (
+        <>
+          {/* Statistics */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Total Users</p>
+                  <p className="text-2xl font-bold text-gray-900">{userStats.total}</p>
+                </div>
+                <Users className="w-8 h-8 text-blue-500" />
+              </div>
             </div>
             
-            <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Role
-                </label>
-                <select
-                  value={editForm.role}
-                  onChange={(e) => setEditForm({...editForm, role: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                >
-                  <option value="user">User</option>
-                  <option value="manager">Manager</option>
-                  {hasPermission('roles.assign') && (
-                    <>
-                      <option value="admin">Admin</option>
-                      {profile?.role === 'super_admin' && (
-                        <option value="super_admin">Super Admin</option>
-                      )}
-                    </>
-                  )}
-                </select>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Active</p>
+                  <p className="text-2xl font-bold text-green-600">{userStats.active}</p>
+                </div>
+                <CheckCircle className="w-8 h-8 text-green-500" />
               </div>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Locked</p>
+                  <p className="text-2xl font-bold text-red-600">{userStats.locked}</p>
+                </div>
+                <XCircle className="w-8 h-8 text-red-500" />
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Admins</p>
+                  <p className="text-2xl font-bold text-purple-600">{userStats.admins}</p>
+                </div>
+                <Shield className="w-8 h-8 text-purple-500" />
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">2FA Enabled</p>
+                  <p className="text-2xl font-bold text-blue-600">{userStats.twoFactorEnabled}</p>
+                </div>
+                <Shield className="w-8 h-8 text-blue-500" />
+              </div>
+            </div>
+          </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Department
-                </label>
+          {/* Filters */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center space-y-4 sm:space-y-0 sm:space-x-4">
+              <div className="relative flex-1">
+                <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  value={editForm.department}
-                  onChange={(e) => setEditForm({...editForm, department: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter department"
+                  placeholder="Search users..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Phone
-                </label>
-                <input
-                  type="tel"
-                  value={editForm.phone}
-                  onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter phone number"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-4 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Update User
-                </button>
-              </div>
-            </form>
+              
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="all">All Roles</option>
+                <option value="super_admin">Super Admin</option>
+                <option value="admin">Admin</option>
+                <option value="manager">Manager</option>
+                <option value="user">User</option>
+              </select>
+            </div>
           </div>
-        </div>
+
+          {/* Users Table */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      User
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Role
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Department
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      2FA
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Last Login
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredUsers.map((user) => {
+                    const isLocked = user.account_locked_until && new Date(user.account_locked_until) > new Date();
+                    
+                    return (
+                      <tr key={user.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                              <span className="text-white font-semibold text-sm">
+                                {user.full_name.split(' ').map(n => n[0]).join('')}
+                              </span>
+                            </div>
+                            <div className="ml-4">
+                              <div className="text-sm font-medium text-gray-900">{user.full_name}</div>
+                              <div className="text-sm text-gray-500">{user.email}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center space-x-2">
+                            {getRoleIcon(user.role)}
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getRoleColor(user.role)}`}>
+                              {user.role.replace('_', ' ').toUpperCase()}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{user.department || 'Not assigned'}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center space-x-2">
+                            {getStatusIcon(user)}
+                            <span className={`text-sm ${
+                              isLocked ? 'text-red-600' : 
+                              user.email_confirmed_at ? 'text-green-600' : 'text-yellow-600'
+                            }`}>
+                              {isLocked ? 'Locked' : 
+                               user.email_confirmed_at ? 'Active' : 'Pending'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            user.two_factor_enabled 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'bg-gray-100 text-gray-700'
+                          }`}>
+                            {user.two_factor_enabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {user.last_sign_in_at 
+                              ? new Date(user.last_sign_in_at).toLocaleDateString()
+                              : 'Never'
+                            }
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex items-center space-x-2">
+                            {hasPermission('users.update') && (
+                              <button
+                                onClick={() => handleEditUser(user)}
+                                className="text-blue-600 hover:text-blue-900"
+                                title="Edit user"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                            )}
+                            
+                            {hasPermission('users.update') && user.id !== profile?.id && (
+                              <>
+                                {isLocked ? (
+                                  <button
+                                    onClick={() => handleUnlockUser(user.id)}
+                                    className="text-green-600 hover:text-green-900"
+                                    title="Unlock user"
+                                  >
+                                    <CheckCircle className="w-4 h-4" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleLockUser(user.id)}
+                                    className="text-red-600 hover:text-red-900"
+                                    title="Lock user"
+                                  >
+                                    <XCircle className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Edit User Modal */}
+          {showEditModal && selectedUser && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+                <div className="p-6 border-b border-gray-200">
+                  <h2 className="text-xl font-bold text-gray-900">Edit User</h2>
+                </div>
+                
+                <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Role
+                    </label>
+                    <select
+                      value={editForm.role}
+                      onChange={(e) => setEditForm({...editForm, role: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    >
+                      <option value="user">User</option>
+                      <option value="manager">Manager</option>
+                      {hasPermission('roles.assign') && (
+                        <>
+                          <option value="admin">Admin</option>
+                          {profile?.role === 'super_admin' && (
+                            <option value="super_admin">Super Admin</option>
+                          )}
+                        </>
+                      )}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Department
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.department}
+                      onChange={(e) => setEditForm({...editForm, department: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Enter department"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Enter phone number"
+                    />
+                  </div>
+
+                  <div className="flex justify-end space-x-4 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditModal(false)}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Update User
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <InvitationManagement 
+          showFormProp={showInviteForm} 
+          setShowFormProp={setShowInviteForm} 
+        />
       )}
     </div>
   );

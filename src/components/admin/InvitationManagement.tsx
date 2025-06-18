@@ -28,7 +28,15 @@ interface Invitation {
   created_at: string;
 }
 
-const InvitationManagement: React.FC = () => {
+interface InvitationManagementProps {
+  showFormProp?: boolean;
+  setShowFormProp?: (show: boolean) => void;
+}
+
+const InvitationManagement: React.FC<InvitationManagementProps> = ({
+  showFormProp,
+  setShowFormProp
+}) => {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +53,10 @@ const InvitationManagement: React.FC = () => {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const { profile, organization, hasPermission } = useAuth();
+
+  // Use the prop value if provided, otherwise use the internal state
+  const isShowingForm = showFormProp !== undefined ? showFormProp : showInviteForm;
+  const setIsShowingForm = setShowFormProp || setShowInviteForm;
 
   useEffect(() => {
     fetchInvitations();
@@ -115,7 +127,7 @@ const InvitationManagement: React.FC = () => {
 
       // Refresh the invitations list
       await fetchInvitations();
-      setShowInviteForm(false);
+      setIsShowingForm(false);
       setInviteFormData({
         email: '',
         role: 'user',
@@ -257,21 +269,6 @@ const InvitationManagement: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Invitation Management</h1>
-          <p className="text-gray-600">Invite and manage users for your organization</p>
-        </div>
-        <button
-          onClick={() => setShowInviteForm(true)}
-          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Invite User</span>
-        </button>
-      </div>
-
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2">
           <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
@@ -306,6 +303,15 @@ const InvitationManagement: React.FC = () => {
             <RefreshCw className="w-4 h-4" />
             <span>Refresh</span>
           </button>
+          {!isShowingForm && (
+            <button
+              onClick={() => setIsShowingForm(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Invite User</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -323,7 +329,7 @@ const InvitationManagement: React.FC = () => {
               {searchTerm ? 'Try adjusting your search' : 'Invite users to join your organization'}
             </p>
             <button
-              onClick={() => setShowInviteForm(true)}
+              onClick={() => setIsShowingForm(true)}
               className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -445,7 +451,7 @@ const InvitationManagement: React.FC = () => {
       </div>
 
       {/* Invite User Form Modal */}
-      {showInviteForm && (
+      {isShowingForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
             <div className="p-6 border-b border-gray-200">
@@ -461,7 +467,7 @@ const InvitationManagement: React.FC = () => {
                 </div>
                 <button
                   onClick={() => {
-                    setShowInviteForm(false);
+                    setIsShowingForm(false);
                     setInviteError(null);
                   }}
                   className="text-gray-400 hover:text-gray-600"
@@ -534,7 +540,7 @@ const InvitationManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    setShowInviteForm(false);
+                    setIsShowingForm(false);
                     setInviteError(null);
                   }}
                   disabled={inviteLoading}

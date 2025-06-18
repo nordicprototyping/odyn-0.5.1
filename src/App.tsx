@@ -9,7 +9,6 @@ import DashboardPage from './pages/DashboardPage';
 import UserManagement from './components/admin/UserManagement';
 import OrganizationSettings from './components/admin/OrganizationSettings';
 import OrganizationManagement from './components/admin/OrganizationManagement';
-import InvitationManagement from './components/admin/InvitationManagement';
 import TravelSecurityManagement from './components/TravelSecurityManagement';
 import RiskManagement from './components/RiskManagement';
 import PersonnelDashboard from './components/PersonnelDashboard';
@@ -150,16 +149,6 @@ function App() {
               <ProtectedRoute requiredPermission="users.read">
                 <MainLayout>
                   <UserManagement />
-                </MainLayout>
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/admin/invitations" 
-            element={
-              <ProtectedRoute requiredPermission="users.create">
-                <MainLayout>
-                  <InvitationManagement />
                 </MainLayout>
               </ProtectedRoute>
             } 
