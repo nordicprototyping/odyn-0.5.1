@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   AlertTriangle,
   Plus,
@@ -22,16 +22,13 @@ import {
   TrendingUp,
   TrendingDown,
   Activity,
-  Loader2,
-  Building,
-  Users
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useDepartments } from '../hooks/useDepartments';
 import { useIncidents } from '../hooks/useIncidents';
 import AddEditIncidentForm from './AddEditIncidentForm';
 import Modal from './common/Modal';
-import { supabase } from '../lib/supabase';
 
 const IncidentManagement: React.FC = () => {
   const [showReportForm, setShowReportForm] = useState(false);
@@ -43,9 +40,6 @@ const IncidentManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<string>('date_time');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [personnelMap, setPersonnelMap] = useState<Record<string, string>>({});
-  const [assetsMap, setAssetsMap] = useState<Record<string, any>>({});
-  const [loadingRelatedData, setLoadingRelatedData] = useState(false);
 
   const { user, profile, hasPermission } = useAuth();
   const { departments } = useDepartments();
@@ -59,66 +53,6 @@ const IncidentManagement: React.FC = () => {
     logAuditEvent 
   } = useIncidents();
 
-  // Fetch personnel and assets data for display
-  useEffect(() => {
-    const fetchRelatedData = async () => {
-      setLoadingRelatedData(true);
-      try {
-        // Collect all unique personnel IDs from incidents
-        const personnelIds = new Set<string>();
-        incidents.forEach(incident => {
-          if (incident.involved_personnel_ids && incident.involved_personnel_ids.length > 0) {
-            incident.involved_personnel_ids.forEach(id => personnelIds.add(id));
-          }
-        });
-
-        // Collect all unique asset IDs from incidents
-        const assetIds = new Set<string>();
-        incidents.forEach(incident => {
-          if (incident.location_asset_id) {
-            assetIds.add(incident.location_asset_id);
-          }
-        });
-
-        // Fetch personnel data if needed
-        if (personnelIds.size > 0) {
-          const { data: personnelData } = await supabase
-            .from('personnel_details')
-            .select('id, name')
-            .in('id', Array.from(personnelIds));
-          
-          const newPersonnelMap: Record<string, string> = {};
-          (personnelData || []).forEach(person => {
-            newPersonnelMap[person.id] = person.name;
-          });
-          setPersonnelMap(newPersonnelMap);
-        }
-
-        // Fetch assets data if needed
-        if (assetIds.size > 0) {
-          const { data: assetsData } = await supabase
-            .from('assets')
-            .select('id, name, location')
-            .in('id', Array.from(assetIds));
-          
-          const newAssetsMap: Record<string, any> = {};
-          (assetsData || []).forEach(asset => {
-            newAssetsMap[asset.id] = asset;
-          });
-          setAssetsMap(newAssetsMap);
-        }
-      } catch (err) {
-        console.error('Error fetching related data:', err);
-      } finally {
-        setLoadingRelatedData(false);
-      }
-    };
-
-    if (incidents.length > 0) {
-      fetchRelatedData();
-    }
-  }, [incidents]);
-
   // Add console log to track rendering and state
   console.log('IncidentManagement rendering, showReportForm:', showReportForm);
 
@@ -130,7 +64,7 @@ const IncidentManagement: React.FC = () => {
         
         // Log audit event
         if (updatedIncident) {
-          await logAuditEvent('incident_updated', updatedIncident.id, { 
+          await logAuditEvent('incident_updated', updatedIncident.id, {
             incident_title: updatedIncident.title,
             incident_severity: updatedIncident.severity,
             incident_status: updatedIncident.status
@@ -144,7 +78,7 @@ const IncidentManagement: React.FC = () => {
         
         // Log audit event
         if (newIncident) {
-          await logAuditEvent('incident_created', newIncident.id, { 
+          await logAuditEvent('incident_created', newIncident.id, {
             incident_title: newIncident.title,
             incident_severity: newIncident.severity
           });
@@ -217,17 +151,6 @@ const IncidentManagement: React.FC = () => {
       case 'Closed': return <CheckCircle className="w-4 h-4" />;
       default: return <Eye className="w-4 h-4" />;
     }
-  };
-
-  // Get personnel names from IDs
-  const getPersonnelNames = (personnelIds: string[] = []): string[] => {
-    return personnelIds.map(id => personnelMap[id] || 'Unknown Personnel');
-  };
-
-  // Get asset details from ID
-  const getAssetDetails = (assetId: string | null): any => {
-    if (!assetId) return null;
-    return assetsMap[assetId] || null;
   };
 
   const filteredIncidents = incidents.filter(incident => {
@@ -506,93 +429,80 @@ const IncidentManagement: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {sortedIncidents.map((incident) => {
-                const assetDetails = incident.location_asset_id ? getAssetDetails(incident.location_asset_id) : null;
-                
-                return (
-                  <tr key={incident.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-blue-600">{incident.id.slice(0, 8)}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">{incident.title}</div>
-                      <div className="text-sm text-gray-500 truncate max-w-xs">{incident.description}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {new Date(incident.date_time).toLocaleDateString()}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {new Date(incident.date_time).toLocaleTimeString()}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getSeverityColor(incident.severity)}`}>
-                        {incident.severity}
+              {sortedIncidents.map((incident) => (
+                <tr key={incident.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-blue-600">{incident.id.slice(0, 8)}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm font-medium text-gray-900">{incident.title}</div>
+                    <div className="text-sm text-gray-500 truncate max-w-xs">{incident.description}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {new Date(incident.date_time).toLocaleDateString()}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {new Date(incident.date_time).toLocaleTimeString()}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getSeverityColor(incident.severity)}`}>
+                      {incident.severity}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center text-sm text-gray-900">
+                      <MapPin className="w-4 h-4 mr-1 text-gray-400" />
+                      {incident.location}
+                    </div>
+                    <div className="text-sm text-gray-500">{incident.department}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      {getStatusIcon(incident.status)}
+                      <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(incident.status)}`}>
+                        {incident.status}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center text-sm text-gray-900">
-                        {assetDetails ? (
-                          <>
-                            <Building className="w-4 h-4 mr-1 text-gray-400" />
-                            <span>{assetDetails.name}</span>
-                          </>
-                        ) : (
-                          <>
-                            <MapPin className="w-4 h-4 mr-1 text-gray-400" />
-                            {incident.location}
-                          </>
-                        )}
-                      </div>
-                      <div className="text-sm text-gray-500">{incident.department}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        {getStatusIcon(incident.status)}
-                        <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(incident.status)}`}>
-                          {incident.status}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center text-sm text-gray-900">
-                        <User className="w-4 h-4 mr-1 text-gray-400" />
-                        {incident.assigned_to || 'Unassigned'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => setSelectedIncident(incident)}
-                          className="text-blue-600 hover:text-blue-900"
-                          title="View details"
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center text-sm text-gray-900">
+                      <User className="w-4 h-4 mr-1 text-gray-400" />
+                      {incident.assigned_to || 'Unassigned'}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => setSelectedIncident(incident)}
+                        className="text-blue-600 hover:text-blue-900"
+                        title="View details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      {hasPermission('incidents.update') && (
+                        <button 
+                          onClick={() => handleEditIncident(incident)}
+                          className="text-gray-600 hover:text-gray-900"
+                          title="Edit incident"
                         >
-                          <Eye className="w-4 h-4" />
+                          <Edit className="w-4 h-4" />
                         </button>
-                        {hasPermission('incidents.update') && (
-                          <button 
-                            onClick={() => handleEditIncident(incident)}
-                            className="text-gray-600 hover:text-gray-900"
-                            title="Edit incident"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                        )}
-                        {hasPermission('incidents.delete') && (
-                          <button 
-                            onClick={() => handleDeleteIncident(incident.id, incident.title)}
-                            className="text-red-600 hover:text-red-900"
-                            title="Delete incident"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                      )}
+                      {hasPermission('incidents.delete') && (
+                        <button 
+                          onClick={() => handleDeleteIncident(incident.id, incident.title)}
+                          className="text-red-600 hover:text-red-900"
+                          title="Delete incident"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
               {sortedIncidents.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
@@ -684,52 +594,16 @@ const IncidentManagement: React.FC = () => {
                 </div>
               )}
               
-              {/* Involved Personnel Section */}
-              {selectedIncident?.involved_personnel_ids && selectedIncident.involved_personnel_ids.length > 0 && (
+              {selectedIncident?.involved_parties?.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center space-x-2">
-                    <Users className="w-5 h-5 text-blue-500" />
-                    <span>Involved Personnel</span>
-                  </h3>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {selectedIncident.involved_personnel_ids.map((id: string) => (
-                        <div key={id} className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-200">
-                          <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                            <span className="text-white font-semibold text-xs">
-                              {(personnelMap[id] || 'UN').substring(0, 2)}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{personnelMap[id] || 'Unknown Personnel'}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* Additional Involved Parties (if any) */}
-              {selectedIncident?.involved_parties?.length > 0 && 
-               (!selectedIncident?.involved_personnel_ids || 
-                selectedIncident.involved_parties.length > selectedIncident.involved_personnel_ids.length) && (
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Additional Involved Parties</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Involved Parties</h3>
                   <div className="flex flex-wrap gap-2">
-                    {selectedIncident?.involved_parties.map((party: string, index: number) => {
-                      // Skip if this party is already listed as personnel
-                      if (selectedIncident.involved_personnel_ids && 
-                          selectedIncident.involved_personnel_ids.some((id: string) => personnelMap[id] === party)) {
-                        return null;
-                      }
-                      return (
-                        <span key={index} className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
-                          <User className="w-4 h-4 mr-1" />
-                          {party}
-                        </span>
-                      );
-                    })}
+                    {selectedIncident?.involved_parties.map((party: string, index: number) => (
+                      <span key={index} className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                        <User className="w-4 h-4 mr-1" />
+                        {party}
+                      </span>
+                    ))}
                   </div>
                 </div>
               )}
@@ -767,20 +641,7 @@ const IncidentManagement: React.FC = () => {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Location</label>
-                    {selectedIncident?.location_asset_id ? (
-                      <div className="flex items-center space-x-2">
-                        <Building className="w-4 h-4 text-gray-500" />
-                        <p className="text-gray-900">
-                          {assetsMap[selectedIncident.location_asset_id]?.name || 'Unknown Asset'}
-                        </p>
-                        <p className="text-gray-600 text-sm">
-                          {assetsMap[selectedIncident.location_asset_id]?.location?.city}, 
-                          {assetsMap[selectedIncident.location_asset_id]?.location?.country}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-gray-900">{selectedIncident?.location}</p>
-                    )}
+                    <p className="text-gray-900">{selectedIncident?.location}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Department</label>
