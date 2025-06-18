@@ -48,6 +48,7 @@ const RiskManagement: React.FC = () => {
   const { user, profile, hasPermission } = useAuth();
   const { 
     risks, 
+    userProfiles,
     loading, 
     error, 
     fetchRisks, 
@@ -521,7 +522,7 @@ const RiskManagement: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center text-sm text-gray-900">
                       <User className="w-4 h-4 mr-1 text-gray-400" />
-                      {risk.user_profiles?.full_name || 'Unassigned'}
+                      {risk.owner_user_id ? userProfiles[risk.owner_user_id] || 'Unknown User' : 'Unassigned'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -688,7 +689,7 @@ const RiskManagement: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-500">Owner</span>
                   <span className="text-sm text-gray-900">
-                    {selectedRisk?.user_profiles?.full_name || 'Not assigned'}
+                    {selectedRisk?.owner_user_id ? userProfiles[selectedRisk.owner_user_id] || 'Unknown User' : 'Not assigned'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">

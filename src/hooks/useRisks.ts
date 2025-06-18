@@ -9,6 +9,7 @@ type RiskUpdate = Database['public']['Tables']['risks']['Update'];
 
 export function useRisks() {
   const [risks, setRisks] = useState<Risk[]>([]);
+  const [userProfiles, setUserProfiles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user, profile } = useAuth();
@@ -18,16 +19,43 @@ export function useRisks() {
       setLoading(true);
       setError(null);
       
-      const { data, error: fetchError } = await supabase
+      // First, fetch all risks
+      const { data: risksData, error: fetchError } = await supabase
         .from('risks')
-        .select('*, user_profiles!owner_user_id(full_name), user_profiles!identified_by_user_id(full_name)')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (fetchError) {
         throw fetchError;
       }
 
-      setRisks(data || []);
+      setRisks(risksData || []);
+
+      // Collect all unique user IDs from risks
+      const userIds = new Set<string>();
+      (risksData || []).forEach(risk => {
+        if (risk.owner_user_id) userIds.add(risk.owner_user_id);
+        if (risk.identified_by_user_id) userIds.add(risk.identified_by_user_id);
+      });
+
+      // Fetch user profiles for these user IDs
+      if (userIds.size > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('user_profiles')
+          .select('user_id, full_name')
+          .in('user_id', Array.from(userIds));
+
+        if (profilesError) {
+          console.error('Error fetching user profiles:', profilesError);
+        } else {
+          // Create a map of user_id to full_name
+          const profilesMap: Record<string, string> = {};
+          (profilesData || []).forEach(profile => {
+            profilesMap[profile.user_id] = profile.full_name;
+          });
+          setUserProfiles(profilesMap);
+        }
+      }
     } catch (err) {
       console.error('Error fetching risks:', err);
       setError('Failed to load risk data');
@@ -143,6 +171,7 @@ export function useRisks() {
 
   return {
     risks,
+    userProfiles,
     loading,
     error,
     fetchRisks,
