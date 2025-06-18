@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Shield, Brain, Globe, FileText, Users, Plane, AlertCircle, Settings, X, ChevronDown, LogOut, User, Crown, UserCheck, Building, Building2, LayoutDashboard, AlertTriangle as TriangleAlert } from 'lucide-react';
+import { Shield, Brain, Globe, FileText, Users, Plane, AlertCircle, Settings, X, ChevronDown, LogOut, User, Crown, UserCheck, Building, Building2, LayoutDashboard, AlertTriangle as TriangleAlert, Search } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 interface MenuItem {
@@ -103,6 +103,20 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
     navigate('/login');
   };
 
+  // Mobile search button
+  const handleMobileSearch = () => {
+    // Close sidebar
+    setSidebarOpen(false);
+    
+    // Focus on search input in header
+    setTimeout(() => {
+      const searchInput = document.querySelector('input[placeholder="Search threats, locations..."]') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.focus();
+      }
+    }, 300);
+  };
+
   return (
     <>
       {/* Sidebar */}
@@ -138,6 +152,17 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
             </div>
           </div>
         )}
+        
+        {/* Mobile Search Button */}
+        <div className="px-3 pt-3 pb-1 sm:hidden">
+          <button
+            onClick={handleMobileSearch}
+            className="w-full flex items-center space-x-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            <Search className="w-4 h-4 text-gray-500" />
+            <span className="text-sm">Search...</span>
+          </button>
+        </div>
         
         {/* Navigation */}
         <nav className="flex-1 mt-4 lg:mt-8 overflow-y-auto px-3 lg:px-6 pb-4">
