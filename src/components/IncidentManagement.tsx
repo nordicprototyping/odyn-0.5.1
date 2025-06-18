@@ -50,8 +50,7 @@ const IncidentManagement: React.FC = () => {
     error, 
     addIncident, 
     updateIncident, 
-    deleteIncident, 
-    logAuditEvent 
+    deleteIncident
   } = useIncidents();
 
   // Add console log to track rendering and state
@@ -61,33 +60,15 @@ const IncidentManagement: React.FC = () => {
     try {
       if (editingIncident) {
         // Update existing incident
-        const updatedIncident = await updateIncident(editingIncident.id, formData);
-        
-        // Log audit event
-        if (updatedIncident) {
-          await logAuditEvent('incident_updated', updatedIncident.id, {
-            incident_title: updatedIncident.title,
-            incident_severity: updatedIncident.severity,
-            incident_status: updatedIncident.status
-          });
-        }
-        
-        setEditingIncident(null);
+        await updateIncident(editingIncident.id, formData);
       } else {
         // Create new incident
-        const newIncident = await addIncident(formData);
-        
-        // Log audit event
-        if (newIncident) {
-          await logAuditEvent('incident_created', newIncident.id, {
-            incident_title: newIncident.title,
-            incident_severity: newIncident.severity
-          });
-        }
+        await addIncident(formData);
       }
       
       // Close the form
       setShowReportForm(false);
+      setEditingIncident(null);
     } catch (err) {
       console.error('Error submitting incident:', err);
       throw err;
@@ -105,12 +86,6 @@ const IncidentManagement: React.FC = () => {
     try {
       // Delete the incident
       await deleteIncident(incidentId);
-
-      // Log the deletion in audit logs
-      await logAuditEvent('incident_deleted', incidentId, { 
-        incident_title: incidentTitle,
-        deleted_at: new Date().toISOString()
-      });
 
       // Close the detail view if the deleted incident was selected
       if (selectedIncident?.id === incidentId) {

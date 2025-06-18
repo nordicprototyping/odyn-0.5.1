@@ -3,7 +3,6 @@ import { Eye, EyeOff, Shield, Lock, Mail, AlertCircle, CheckCircle, Loader2, Bra
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import zxcvbn from 'zxcvbn';
-import { supabase } from '../../lib/supabase';
 
 interface PasswordStrength {
   score: number;
@@ -91,13 +90,6 @@ const LoginPage: React.FC = () => {
         
         if (result.error) {
           setError(result.error);
-          
-          // Log failed login attempt
-          await logAuditEvent('login_failed', {
-            email,
-            error_message: result.error,
-            ip_address: await getClientIP()
-          });
         } else if (result.requiresTwoFactor) {
           setShowTwoFactor(true);
           setSuccess('Please enter your two-factor authentication code.');
@@ -134,33 +126,13 @@ const LoginPage: React.FC = () => {
         
         if (result.error) {
           setError(result.error);
-          
-          // Log failed signup attempt
-          await logAuditEvent('signup_failed', {
-            email,
-            error_message: result.error,
-            ip_address: await getClientIP()
-          });
         } else {
           setSuccess('Account created successfully! Please check your email to verify your account.');
           setIsLogin(true);
-          
-          // Log successful signup
-          await logAuditEvent('signup_successful', {
-            email,
-            ip_address: await getClientIP()
-          });
         }
       }
     } catch (error) {
       setError('An unexpected error occurred. Please try again.');
-      
-      // Log unexpected error
-      await logAuditEvent(isLogin ? 'login_error' : 'signup_error', {
-        email,
-        error_message: 'Unexpected error',
-        ip_address: await getClientIP()
-      });
     } finally {
       setLoading(false);
     }
@@ -176,13 +148,6 @@ const LoginPage: React.FC = () => {
       
       if (result.error) {
         setError(result.error);
-        
-        // Log failed 2FA attempt
-        await logAuditEvent('2fa_failed', {
-          email,
-          error_message: result.error,
-          ip_address: await getClientIP()
-        });
       } else {
         // If there's an invitation code, redirect to join organization page
         if (invitationCode) {
@@ -194,13 +159,6 @@ const LoginPage: React.FC = () => {
       }
     } catch (error) {
       setError('Invalid two-factor code. Please try again.');
-      
-      // Log unexpected 2FA error
-      await logAuditEvent('2fa_error', {
-        email,
-        error_message: 'Invalid two-factor code',
-        ip_address: await getClientIP()
-      });
     } finally {
       setLoading(false);
     }
@@ -220,58 +178,13 @@ const LoginPage: React.FC = () => {
       
       if (result.error) {
         setError(result.error);
-        
-        // Log failed password reset request
-        await logAuditEvent('password_reset_failed', {
-          email,
-          error_message: result.error,
-          ip_address: await getClientIP()
-        });
       } else {
         setSuccess('Password reset email sent! Please check your inbox.');
-        
-        // Log successful password reset request
-        await logAuditEvent('password_reset_requested', {
-          email,
-          ip_address: await getClientIP()
-        });
       }
     } catch (error) {
       setError('Failed to send password reset email. Please try again.');
-      
-      // Log unexpected password reset error
-      await logAuditEvent('password_reset_error', {
-        email,
-        error_message: 'Unexpected error',
-        ip_address: await getClientIP()
-      });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const logAuditEvent = async (action: string, details?: Record<string, any>) => {
-    try {
-      // For authentication events, we don't have an organization_id yet
-      // We'll use a special organization ID for auth events or null
-      const authOrgId = '00000000-0000-0000-0000-000000000000'; // Special ID for auth events
-      
-      const { error } = await supabase.from('audit_logs').insert({
-        user_id: null, // We don't have a user ID for auth events
-        organization_id: authOrgId,
-        action,
-        resource_type: 'authentication',
-        resource_id: null,
-        details,
-        ip_address: details?.ip_address || null,
-        user_agent: navigator.userAgent
-      });
-
-      if (error) {
-        console.error('Error logging auth event:', error);
-      }
-    } catch (error) {
-      console.error('Unexpected error logging auth event:', error);
     }
   };
 

@@ -54,8 +54,7 @@ const RiskManagement: React.FC = () => {
     fetchRisks, 
     addRisk, 
     updateRisk, 
-    deleteRisk, 
-    logAuditEvent 
+    deleteRisk
   } = useRisks();
 
   const handleCreateRisk = async (formData: any) => {
@@ -68,17 +67,7 @@ const RiskManagement: React.FC = () => {
         department: formData.department || profile?.department || null
       };
 
-      const newRisk = await addRisk(riskData);
-
-      // Log the creation in audit logs
-      if (newRisk) {
-        await logAuditEvent('risk_created', newRisk.id, { 
-          risk_title: newRisk.title,
-          risk_category: newRisk.category,
-          risk_score: newRisk.risk_score
-        });
-      }
-
+      await addRisk(riskData);
       setShowAddForm(false);
     } catch (err) {
       console.error('Error adding risk:', err);
@@ -96,19 +85,7 @@ const RiskManagement: React.FC = () => {
         last_reviewed_at: new Date().toISOString()
       };
 
-      const updatedRisk = await updateRisk(editingRisk.id, updateData);
-
-      // Log the update in audit logs
-      if (updatedRisk) {
-        await logAuditEvent('risk_updated', updatedRisk.id, { 
-          risk_title: updatedRisk.title,
-          risk_category: updatedRisk.category,
-          risk_score: updatedRisk.risk_score,
-          previous_status: editingRisk.status,
-          new_status: updatedRisk.status
-        });
-      }
-
+      await updateRisk(editingRisk.id, updateData);
       setShowEditForm(false);
       setEditingRisk(null);
     } catch (err) {
@@ -123,18 +100,8 @@ const RiskManagement: React.FC = () => {
     }
 
     try {
-      // Get risk details before deletion for audit log
-      const riskToDelete = risks.find(r => r.id === riskId);
-      
       // Delete the risk
       await deleteRisk(riskId);
-
-      // Log the deletion in audit logs
-      await logAuditEvent('risk_deleted', riskId, { 
-        risk_title: riskTitle,
-        risk_details: riskToDelete || {},
-        deleted_at: new Date().toISOString()
-      });
 
       // Close the detail view if the deleted risk was selected
       if (selectedRisk?.id === riskId) {

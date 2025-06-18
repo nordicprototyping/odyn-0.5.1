@@ -161,8 +161,8 @@ const AuditLogViewer: React.FC = () => {
         }
       }
       
-      // Fetch user information for each log
-      const logsWithUserInfo = await Promise.all((data || []).map(async (log) => {
+      // Process logs to add user information
+      const processedLogs = await Promise.all((data || []).map(async (log) => {
         if (log.user_id) {
           const matchingUser = users.find(u => u.id === log.user_id);
           if (matchingUser) {
@@ -176,7 +176,7 @@ const AuditLogViewer: React.FC = () => {
         return log;
       }));
       
-      setLogs(logsWithUserInfo);
+      setLogs(processedLogs);
     } catch (err) {
       console.error('Error fetching audit logs:', err);
       setError('Failed to load audit logs');
@@ -194,16 +194,16 @@ const AuditLogViewer: React.FC = () => {
       
       if (profilesError) throw profilesError;
       
-      // For each profile, get the auth user data
+      // Create a map of user_id to full_name
       const userMap: {id: string, email: string, name: string}[] = [];
       
       for (const profile of profiles || []) {
         // In a real implementation, you'd need admin access to get user auth data
-        // For now, we'll simulate the email
+        // For now, we'll use the user_id as a fallback if full_name is not available
         userMap.push({
           id: profile.user_id,
-          email: `user${profile.user_id.slice(-4)}@example.com`, // Simulated email
-          name: profile.full_name
+          email: `user-${profile.user_id.slice(0, 8)}@example.com`, // Simulated email
+          name: profile.full_name || `User ${profile.user_id.slice(0, 8)}`
         });
       }
       
@@ -301,6 +301,27 @@ const AuditLogViewer: React.FC = () => {
     setStartDate('');
     setEndDate('');
     setSearchTerm('');
+  };
+
+  const getUserDisplayName = (log: AuditLog): string => {
+    if (log.user_id === null) {
+      return 'System';
+    }
+    
+    if (log.user_name) {
+      return log.user_name;
+    }
+    
+    if (log.user_email) {
+      return log.user_email;
+    }
+    
+    const matchingUser = users.find(u => u.id === log.user_id);
+    if (matchingUser) {
+      return matchingUser.name || matchingUser.email;
+    }
+    
+    return `User ${log.user_id.substring(0, 8)}`;
   };
 
   if (!hasPermission('audit.read')) {
@@ -558,7 +579,7 @@ const AuditLogViewer: React.FC = () => {
                         </div>
                         <div className="ml-3">
                           <div className="text-sm font-medium text-gray-900">
-                            {log.user_name || log.user_email || 'System'}
+                            {getUserDisplayName(log)}
                           </div>
                           <div className="text-xs text-gray-500">
                             {log.user_id ? log.user_id.substring(0, 8) : 'System Action'}
@@ -684,7 +705,7 @@ const AuditLogViewer: React.FC = () => {
                 
                 <div>
                   <h3 className="text-sm font-medium text-gray-500">User</h3>
-                  <p className="text-gray-900">{selectedLog.user_name || selectedLog.user_email || 'System'}</p>
+                  <p className="text-gray-900">{getUserDisplayName(selectedLog)}</p>
                   {selectedLog.user_id && (
                     <p className="text-xs text-gray-500">ID: {selectedLog.user_id}</p>
                   )}

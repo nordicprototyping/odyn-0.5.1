@@ -64,8 +64,7 @@ const AssetSecurityDashboard: React.FC = () => {
     fetchAssets, 
     addAsset,
     updateAsset, 
-    deleteAsset, 
-    logAuditEvent 
+    deleteAsset
   } = useAssets();
 
   // Add console log to track rendering and state
@@ -75,24 +74,10 @@ const AssetSecurityDashboard: React.FC = () => {
     try {
       if (editingAsset) {
         // Update existing asset
-        const updatedAsset = await updateAsset(editingAsset.id, assetData);
-        if (updatedAsset) {
-          await logAuditEvent('asset_updated', updatedAsset.id, { 
-            asset_name: updatedAsset.name,
-            asset_type: updatedAsset.type,
-            asset_location: updatedAsset.location
-          });
-        }
+        await updateAsset(editingAsset.id, assetData);
       } else {
         // Add new asset
-        const newAsset = await addAsset(assetData);
-        if (newAsset) {
-          await logAuditEvent('asset_created', newAsset.id, { 
-            asset_name: newAsset.name,
-            asset_type: newAsset.type,
-            asset_location: newAsset.location
-          });
-        }
+        await addAsset(assetData);
       }
       setShowAddAssetForm(false);
       setEditingAsset(null);
@@ -118,12 +103,6 @@ const AssetSecurityDashboard: React.FC = () => {
     try {
       // Delete the asset from the database
       await deleteAsset(assetId);
-
-      // Log the deletion in audit logs
-      await logAuditEvent('asset_deleted', assetId, { 
-        asset_name: assetName,
-        deleted_at: new Date().toISOString()
-      });
 
       // Close the detail view if the deleted asset was selected
       if (selectedAsset?.id === assetId) {

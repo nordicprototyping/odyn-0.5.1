@@ -54,8 +54,7 @@ const TravelSecurityManagement: React.FC = () => {
     fetchTravelPlans, 
     addTravelPlan, 
     updateTravelPlan, 
-    deleteTravelPlan, 
-    logAuditEvent 
+    deleteTravelPlan
   } = useTravelPlans();
 
   // Add console log to track rendering and state
@@ -63,17 +62,7 @@ const TravelSecurityManagement: React.FC = () => {
 
   const handleAddTravelPlan = async (planData: any) => {
     try {
-      const newPlan = await addTravelPlan(planData);
-
-      // Log the creation in audit logs
-      if (newPlan) {
-        await logAuditEvent('travel_plan_created', newPlan.id, { 
-          traveler_name: planData.traveler_name,
-          destination: planData.destination,
-          departure_date: planData.departure_date
-        });
-      }
-
+      await addTravelPlan(planData);
       setShowNewPlanForm(false);
       setEditingTravelPlan(null);
     } catch (err) {
@@ -86,15 +75,7 @@ const TravelSecurityManagement: React.FC = () => {
     if (!editingTravelPlan) return;
     
     try {
-      const updatedPlan = await updateTravelPlan(editingTravelPlan.id, planData);
-
-      // Log the update in audit logs
-      await logAuditEvent('travel_plan_updated', editingTravelPlan.id, { 
-        traveler_name: planData.traveler_name,
-        destination: planData.destination,
-        departure_date: planData.departure_date
-      });
-
+      await updateTravelPlan(editingTravelPlan.id, planData);
       setShowNewPlanForm(false);
       setEditingTravelPlan(null);
       
@@ -122,11 +103,6 @@ const TravelSecurityManagement: React.FC = () => {
     try {
       // Delete the travel plan from the database
       await deleteTravelPlan(planId);
-
-      // Log the deletion in audit logs
-      await logAuditEvent('travel_plan_deleted', planId, { 
-        deleted_at: new Date().toISOString()
-      });
 
       // Close the detail view if the deleted plan was selected
       if (selectedRequest?.id === planId) {
