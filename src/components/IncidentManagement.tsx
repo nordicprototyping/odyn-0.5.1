@@ -22,7 +22,8 @@ import {
   TrendingUp,
   TrendingDown,
   Activity,
-  Loader2
+  Loader2,
+  Building
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useDepartments } from '../hooks/useDepartments';
@@ -453,7 +454,11 @@ const IncidentManagement: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center text-sm text-gray-900">
-                      <MapPin className="w-4 h-4 mr-1 text-gray-400" />
+                      {incident.location_asset_id ? (
+                        <Building className="w-4 h-4 mr-1 text-blue-500" />
+                      ) : (
+                        <MapPin className="w-4 h-4 mr-1 text-gray-400" />
+                      )}
                       {incident.location}
                     </div>
                     <div className="text-sm text-gray-500">{incident.department}</div>
@@ -594,19 +599,24 @@ const IncidentManagement: React.FC = () => {
                 </div>
               )}
               
-              {selectedIncident?.involved_parties?.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Involved Parties</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedIncident?.involved_parties.map((party: string, index: number) => (
-                      <span key={index} className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
-                        <User className="w-4 h-4 mr-1" />
-                        {party}
-                      </span>
-                    ))}
-                  </div>
+              {/* Involved Parties */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Involved Parties</h3>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  {selectedIncident?.involved_parties?.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedIncident?.involved_parties.map((party: string, index: number) => (
+                        <span key={index} className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                          <User className="w-4 h-4 mr-1" />
+                          {party}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 italic">No involved parties specified</p>
+                  )}
                 </div>
-              )}
+              </div>
               
               {selectedIncident?.documents?.length > 0 && (
                 <div>
@@ -641,7 +651,19 @@ const IncidentManagement: React.FC = () => {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Location</label>
-                    <p className="text-gray-900">{selectedIncident?.location}</p>
+                    <div className="flex items-center">
+                      {selectedIncident?.location_asset_id ? (
+                        <Building className="w-4 h-4 mr-1 text-blue-500" />
+                      ) : (
+                        <MapPin className="w-4 h-4 mr-1 text-gray-500" />
+                      )}
+                      <p className="text-gray-900">{selectedIncident?.location}</p>
+                    </div>
+                    {selectedIncident?.location_coordinates && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Coordinates: {selectedIncident.location_coordinates[1]}, {selectedIncident.location_coordinates[0]}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Department</label>

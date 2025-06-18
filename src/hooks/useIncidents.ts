@@ -19,7 +19,7 @@ export function useIncidents() {
       
       const { data, error: fetchError } = await supabase
         .from('incident_reports')
-        .select('*')
+        .select('*, assets(name, type, location)')
         .order('date_time', { ascending: false });
 
       if (fetchError) {

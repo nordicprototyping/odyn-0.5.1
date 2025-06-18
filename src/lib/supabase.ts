@@ -364,8 +364,11 @@ export interface Database {
           date_time: string;
           severity: 'Low' | 'Medium' | 'High' | 'Critical';
           location: string;
+          location_asset_id: string | null;
+          location_coordinates: [number, number] | null;
           department: string;
           involved_parties: string[];
+          involved_personnel_ids: string[] | null;
           immediate_actions: string | null;
           reporter_user_id: string | null;
           reporter_name: string;
@@ -387,8 +390,11 @@ export interface Database {
           date_time: string;
           severity?: 'Low' | 'Medium' | 'High' | 'Critical';
           location: string;
+          location_asset_id?: string | null;
+          location_coordinates?: [number, number] | null;
           department: string;
           involved_parties?: string[];
+          involved_personnel_ids?: string[] | null;
           immediate_actions?: string | null;
           reporter_user_id?: string | null;
           reporter_name: string;
@@ -410,8 +416,11 @@ export interface Database {
           date_time?: string;
           severity?: 'Low' | 'Medium' | 'High' | 'Critical';
           location?: string;
+          location_asset_id?: string | null;
+          location_coordinates?: [number, number] | null;
           department?: string;
           involved_parties?: string[];
+          involved_personnel_ids?: string[] | null;
           immediate_actions?: string | null;
           reporter_user_id?: string | null;
           reporter_name?: string;
