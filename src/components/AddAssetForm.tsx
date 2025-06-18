@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Building, MapPin, Shield, Users, Settings, AlertTriangle, Save, Loader2, Brain, Search, Plus, UserCheck, Car, Tool } from 'lucide-react';
+import { X, Building, MapPin, Shield, Users, Settings, AlertTriangle, Save, Loader2, Brain, Search, Plus, UserCheck, Car, PenTool as Tool } from 'lucide-react';
 import { Database } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import MitigationSelector from './MitigationSelector';
