@@ -18,6 +18,7 @@ export function useTravelPlans() {
     deleteItem
   } = useSupabaseCRUD<TravelPlan, TravelPlanInsert, TravelPlanUpdate>('travel_plans', {
     defaultQueryOptions: {
+      columns: 'id, traveler_name, traveler_employee_id, traveler_department, traveler_clearance_level, destination, origin, departure_date, return_date, purpose, status, risk_assessment, mitigations',
       order: { column: 'created_at', ascending: false }
     }
   });

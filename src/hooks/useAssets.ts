@@ -18,6 +18,7 @@ export function useAssets() {
     deleteItem
   } = useSupabaseCRUD<Asset, AssetInsert, AssetUpdate>('assets', {
     defaultQueryOptions: {
+      columns: 'id, name, type, location, status, personnel, ai_risk_score, security_systems, compliance, incidents, responsible_officer, mitigations',
       order: { column: 'created_at', ascending: false }
     }
   });

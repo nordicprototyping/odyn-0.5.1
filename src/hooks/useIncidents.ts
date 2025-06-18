@@ -18,6 +18,7 @@ export function useIncidents() {
     deleteItem
   } = useSupabaseCRUD<IncidentReport, IncidentInsert, IncidentUpdate>('incident_reports', {
     defaultQueryOptions: {
+      columns: 'id, title, description, date_time, severity, location, department, reporter_name, status, assigned_to, mitigations',
       order: { column: 'date_time', ascending: false }
     }
   });

@@ -18,8 +18,8 @@ export function usePersonnel() {
     deleteItem
   } = useSupabaseCRUD<Personnel, PersonnelInsert, PersonnelUpdate>('personnel_details', {
     defaultQueryOptions: {
-      order: { column: 'created_at', ascending: false },
-      foreignTables: ['assets(name, type, location)']
+      columns: 'id, name, employee_id, category, department, current_location, clearance_level, ai_risk_score, status, last_seen, work_asset_id, mitigations',
+      order: { column: 'created_at', ascending: false }
     }
   });
 

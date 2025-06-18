@@ -18,6 +18,7 @@ export function useRisks() {
     deleteItem
   } = useSupabaseCRUD<Risk, RiskInsert, RiskUpdate>('risks', {
     defaultQueryOptions: {
+      columns: 'id, title, description, category, status, impact, likelihood, risk_score, owner_user_id, identified_by_user_id, department, due_date, last_reviewed_at, mitigation_plan, mitigations',
       order: { column: 'created_at', ascending: false }
     }
   });
