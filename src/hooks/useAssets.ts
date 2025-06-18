@@ -1,95 +1,181 @@
-import { useCallback } from 'react';
-import { Database } from '../lib/supabase';
-import { useSupabaseCRUD } from './useSupabaseCRUD';
-import { AuditService } from '../services/auditService';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase, Database } from '../lib/supabase';
+import { useAuth } from './useAuth';
 
 type Asset = Database['public']['Tables']['assets']['Row'];
 type AssetInsert = Database['public']['Tables']['assets']['Insert'];
 type AssetUpdate = Database['public']['Tables']['assets']['Update'];
 
 export function useAssets() {
-  const {
-    data: assets,
-    loading,
-    error,
-    fetchData,
-    addItem,
-    updateItem,
-    deleteItem
-  } = useSupabaseCRUD<Asset, AssetInsert, AssetUpdate>('assets', {
-    defaultQueryOptions: {
-      columns: 'id, name, type, location, status, personnel, ai_risk_score, security_systems, compliance, incidents, responsible_officer, mitigations',
-      order: { column: 'created_at', ascending: false }
-    }
-  });
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { user, profile } = useAuth();
 
   const fetchAssets = useCallback(async () => {
-    await fetchData();
-  }, [fetchData]);
-
-  const addAsset = useCallback(async (assetData: AssetInsert) => {
     try {
-      const newAsset = await addItem(assetData);
+      setLoading(true);
+      setError(null);
+      
+      const { data, error: fetchError } = await supabase
+        .from('assets')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      setAssets(data || []);
+    } catch (err) {
+      console.error('Error fetching assets:', err);
+      setError('Failed to load asset data');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAssets();
+  }, [fetchAssets]);
+
+  const addAsset = async (assetData: AssetInsert) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data, error } = await supabase
+        .from('assets')
+        .insert([assetData])
+        .select();
+
+      if (error) {
+        throw error;
+      }
+
+      setAssets(prev => [...(data || []), ...prev]);
       
       // Log the asset creation in audit logs
-      if (newAsset) {
-        await AuditService.logAsset('asset_created', newAsset.id, { 
+      if (data?.[0]) {
+        await logAuditEvent('asset_created', data[0].id, { 
           asset_name: assetData.name,
           asset_type: assetData.type,
           asset_location: assetData.location
         });
       }
       
-      return newAsset;
+      return data?.[0] || null;
     } catch (err) {
       console.error('Error adding asset:', err);
+      setError(err instanceof Error ? err.message : 'Failed to add asset');
       throw err;
+    } finally {
+      setLoading(false);
     }
-  }, [addItem]);
+  };
 
-  const updateAsset = useCallback(async (id: string, assetData: AssetUpdate) => {
+  const updateAsset = async (id: string, assetData: AssetUpdate) => {
     try {
-      const updatedAsset = await updateItem(id, assetData);
+      setLoading(true);
+      setError(null);
+
+      const { data, error } = await supabase
+        .from('assets')
+        .update(assetData)
+        .eq('id', id)
+        .select();
+
+      if (error) {
+        throw error;
+      }
+
+      setAssets(prev => prev.map(asset => asset.id === id ? (data?.[0] || asset) : asset));
       
       // Log the asset update in audit logs
-      if (updatedAsset) {
-        await AuditService.logAsset('asset_updated', updatedAsset.id, { 
-          asset_name: assetData.name || updatedAsset.name,
-          asset_type: assetData.type || updatedAsset.type,
-          asset_status: assetData.status || updatedAsset.status,
-          asset_location: assetData.location || updatedAsset.location
+      if (data?.[0]) {
+        await logAuditEvent('asset_updated', data[0].id, { 
+          asset_name: assetData.name || data[0].name,
+          asset_type: assetData.type || data[0].type,
+          asset_status: assetData.status || data[0].status,
+          asset_location: assetData.location || data[0].location
         });
       }
       
-      return updatedAsset;
+      return data?.[0] || null;
     } catch (err) {
       console.error('Error updating asset:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update asset');
       throw err;
+    } finally {
+      setLoading(false);
     }
-  }, [updateItem]);
+  };
 
-  const deleteAsset = useCallback(async (id: string) => {
+  const deleteAsset = async (id: string) => {
     try {
-      // Get asset details before deletion for audit log
-      const asset = assets.find(a => a.id === id);
+      setLoading(true);
+      setError(null);
       
-      await deleteItem(id);
+      // Get asset details before deletion for audit log
+      const { data: assetToDelete } = await supabase
+        .from('assets')
+        .select('name, type')
+        .eq('id', id)
+        .single();
+
+      const { error } = await supabase
+        .from('assets')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        throw error;
+      }
+
+      setAssets(prev => prev.filter(asset => asset.id !== id));
       
       // Log the asset deletion in audit logs
-      if (asset) {
-        await AuditService.logAsset('asset_deleted', id, { 
-          asset_name: asset.name,
-          asset_type: asset.type,
+      if (assetToDelete) {
+        await logAuditEvent('asset_deleted', id, { 
+          asset_name: assetToDelete.name,
+          asset_type: assetToDelete.type,
           deleted_at: new Date().toISOString()
         });
       }
-      
-      return true;
     } catch (err) {
       console.error('Error deleting asset:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete asset');
       throw err;
+    } finally {
+      setLoading(false);
     }
-  }, [assets, deleteItem]);
+  };
+
+  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
+    if (!profile?.organization_id) {
+      console.warn('Cannot log audit event: no organization ID available');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase.from('audit_logs').insert({
+        user_id: user?.id || null,
+        organization_id: profile.organization_id,
+        action,
+        resource_type: 'asset',
+        resource_id: resourceId,
+        details,
+        ip_address: null,
+        user_agent: navigator.userAgent
+      });
+
+      if (error) {
+        console.error('Error logging audit event:', error);
+      }
+    } catch (error) {
+      console.error('Unexpected error logging audit event:', error);
+    }
+  };
 
   return {
     assets,
@@ -99,6 +185,6 @@ export function useAssets() {
     addAsset,
     updateAsset,
     deleteAsset,
-    logAuditEvent: AuditService.logAsset // Keep for backward compatibility
+    logAuditEvent
   };
 }

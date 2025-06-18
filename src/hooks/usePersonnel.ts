@@ -1,95 +1,182 @@
-import { useCallback } from 'react';
-import { Database } from '../lib/supabase';
-import { useSupabaseCRUD } from './useSupabaseCRUD';
-import { AuditService } from '../services/auditService';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase, Database } from '../lib/supabase';
+import { useAuth } from './useAuth';
 
 type Personnel = Database['public']['Tables']['personnel_details']['Row'];
 type PersonnelInsert = Database['public']['Tables']['personnel_details']['Insert'];
 type PersonnelUpdate = Database['public']['Tables']['personnel_details']['Update'];
 
 export function usePersonnel() {
-  const {
-    data: personnel,
-    loading,
-    error,
-    fetchData,
-    addItem,
-    updateItem,
-    deleteItem
-  } = useSupabaseCRUD<Personnel, PersonnelInsert, PersonnelUpdate>('personnel_details', {
-    defaultQueryOptions: {
-      columns: 'id, name, employee_id, category, department, current_location, clearance_level, ai_risk_score, status, last_seen, work_asset_id, mitigations',
-      order: { column: 'created_at', ascending: false }
-    }
-  });
+  const [personnel, setPersonnel] = useState<Personnel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { user, profile } = useAuth();
 
   const fetchPersonnel = useCallback(async () => {
-    await fetchData();
-  }, [fetchData]);
-
-  const addPersonnel = useCallback(async (personnelData: PersonnelInsert) => {
     try {
-      const newPersonnel = await addItem(personnelData);
+      setLoading(true);
+      setError(null);
+      
+      // Include work_asset_id and date_of_birth in the select
+      const { data, error: fetchError } = await supabase
+        .from('personnel_details')
+        .select('*, assets(name, type, location)')
+        .order('created_at', { ascending: false });
+
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      setPersonnel(data || []);
+    } catch (err) {
+      console.error('Error fetching personnel:', err);
+      setError('Failed to load personnel data');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPersonnel();
+  }, [fetchPersonnel]);
+
+  const addPersonnel = async (personnelData: PersonnelInsert) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data, error } = await supabase
+        .from('personnel_details')
+        .insert([personnelData])
+        .select();
+
+      if (error) {
+        throw error;
+      }
+
+      setPersonnel(prev => [...(data || []), ...prev]);
       
       // Log the personnel creation in audit logs
-      if (newPersonnel) {
-        await AuditService.logPersonnel('personnel_created', newPersonnel.id, { 
+      if (data?.[0]) {
+        await logAuditEvent('personnel_created', data[0].id, { 
           personnel_name: personnelData.name,
           employee_id: personnelData.employee_id,
           department: personnelData.department
         });
       }
       
-      return newPersonnel;
+      return data?.[0] || null;
     } catch (err) {
       console.error('Error adding personnel:', err);
+      setError(err instanceof Error ? err.message : 'Failed to add personnel');
       throw err;
+    } finally {
+      setLoading(false);
     }
-  }, [addItem]);
+  };
 
-  const updatePersonnel = useCallback(async (id: string, personnelData: PersonnelUpdate) => {
+  const updatePersonnel = async (id: string, personnelData: PersonnelUpdate) => {
     try {
-      const updatedPersonnel = await updateItem(id, personnelData);
+      setLoading(true);
+      setError(null);
+
+      const { data, error } = await supabase
+        .from('personnel_details')
+        .update(personnelData)
+        .eq('id', id)
+        .select();
+
+      if (error) {
+        throw error;
+      }
+
+      setPersonnel(prev => prev.map(person => person.id === id ? (data?.[0] || person) : person));
       
       // Log the personnel update in audit logs
-      if (updatedPersonnel) {
-        await AuditService.logPersonnel('personnel_updated', updatedPersonnel.id, { 
-          personnel_name: personnelData.name || updatedPersonnel.name,
-          employee_id: personnelData.employee_id || updatedPersonnel.employee_id,
-          department: personnelData.department || updatedPersonnel.department,
-          status: personnelData.status || updatedPersonnel.status
+      if (data?.[0]) {
+        await logAuditEvent('personnel_updated', data[0].id, { 
+          personnel_name: personnelData.name || data[0].name,
+          employee_id: personnelData.employee_id || data[0].employee_id,
+          department: personnelData.department || data[0].department,
+          status: personnelData.status || data[0].status
         });
       }
       
-      return updatedPersonnel;
+      return data?.[0] || null;
     } catch (err) {
       console.error('Error updating personnel:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update personnel');
       throw err;
+    } finally {
+      setLoading(false);
     }
-  }, [updateItem]);
+  };
 
-  const deletePersonnel = useCallback(async (id: string) => {
+  const deletePersonnel = async (id: string) => {
     try {
-      // Get personnel details before deletion for audit log
-      const person = personnel.find(p => p.id === id);
+      setLoading(true);
+      setError(null);
       
-      await deleteItem(id);
+      // Get personnel details before deletion for audit log
+      const { data: personnelToDelete } = await supabase
+        .from('personnel_details')
+        .select('name, employee_id')
+        .eq('id', id)
+        .single();
+
+      const { error } = await supabase
+        .from('personnel_details')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        throw error;
+      }
+
+      setPersonnel(prev => prev.filter(person => person.id !== id));
       
       // Log the personnel deletion in audit logs
-      if (person) {
-        await AuditService.logPersonnel('personnel_deleted', id, { 
-          personnel_name: person.name,
-          employee_id: person.employee_id,
+      if (personnelToDelete) {
+        await logAuditEvent('personnel_deleted', id, { 
+          personnel_name: personnelToDelete.name,
+          employee_id: personnelToDelete.employee_id,
           deleted_at: new Date().toISOString()
         });
       }
-      
-      return true;
     } catch (err) {
       console.error('Error deleting personnel:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete personnel');
       throw err;
+    } finally {
+      setLoading(false);
     }
-  }, [personnel, deleteItem]);
+  };
+
+  const logAuditEvent = async (action: string, resourceId?: string, details?: Record<string, any>) => {
+    if (!profile?.organization_id) {
+      console.warn('Cannot log audit event: no organization ID available');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase.from('audit_logs').insert({
+        user_id: user?.id || null,
+        organization_id: profile.organization_id,
+        action,
+        resource_type: 'personnel',
+        resource_id: resourceId,
+        details,
+        ip_address: null,
+        user_agent: navigator.userAgent
+      });
+
+      if (error) {
+        console.error('Error logging audit event:', error);
+      }
+    } catch (error) {
+      console.error('Unexpected error logging audit event:', error);
+    }
+  };
 
   return {
     personnel,
@@ -99,6 +186,6 @@ export function usePersonnel() {
     addPersonnel,
     updatePersonnel,
     deletePersonnel,
-    logAuditEvent: AuditService.logPersonnel // Keep for backward compatibility
+    logAuditEvent
   };
 }
