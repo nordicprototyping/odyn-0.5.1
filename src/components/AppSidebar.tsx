@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Shield, Brain, Globe, FileText, Users, Plane, AlertCircle, Settings, X, ChevronDown, LogOut, User, Crown, UserCheck, Building, Building2, LayoutDashboard, AlertTriangle as TriangleAlert, Mail } from 'lucide-react';
+import { Shield, Brain, Globe, FileText, Users, Plane, AlertCircle, Settings, X, ChevronDown, LogOut, User, Crown, UserCheck, Building, Building2, LayoutDashboard, AlertTriangle as TriangleAlert } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 interface MenuItem {
@@ -51,7 +51,6 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
       permission: 'users.read',
       items: [
         { id: 'admin-users', label: 'User Management', icon: Users, path: '/admin/users' },
-        { id: 'admin-invitations', label: 'Invitations', icon: Mail, path: '/admin/invitations' },
         { id: 'admin-org-settings', label: 'Organization Settings', icon: Settings, path: '/admin/organization-settings' },
         { id: 'admin-audit-logs', label: 'Audit Logs', icon: FileText, path: '/admin/audit-logs' }
       ]
