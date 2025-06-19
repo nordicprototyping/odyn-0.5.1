@@ -23,11 +23,7 @@ import {
   ChevronRight,
   Loader2,
   Shield,
-  Brain,
-  Lightbulb,
-  Zap,
-  Plane,
-  FileText
+  Brain
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import AddEditRiskForm from './AddEditRiskForm';
@@ -37,7 +33,6 @@ import MitigationDisplay from './MitigationDisplay';
 import { AppliedMitigation } from '../types/mitigation';
 import ConfirmationModal from './common/ConfirmationModal';
 import { aiService, DetectedRisk } from '../services/aiService';
-import { supabase } from '../lib/supabase';
 
 type Risk = any;
 
@@ -46,7 +41,6 @@ const RiskManagement: React.FC = () => {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterRiskLevel, setFilterRiskLevel] = useState<string>('all');
-  const [filterSource, setFilterSource] = useState<string>('all');
   const [sortField, setSortField] = useState<string>('risk_score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null);
@@ -55,24 +49,17 @@ const RiskManagement: React.FC = () => {
   const [editingRisk, setEditingRisk] = useState<Risk | null>(null);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [riskToDelete, setRiskToDelete] = useState<{id: string, title: string} | null>(null);
+  const [showAiDetectionModal, setShowAiDetectionModal] = useState(false);
   const [aiDetectionLoading, setAiDetectionLoading] = useState(false);
+  const [aiDetectedRisks, setAiDetectedRisks] = useState<DetectedRisk[]>([]);
   const [aiDetectionError, setAiDetectionError] = useState<string | null>(null);
-  const [aiDetectionSuccess, setAiDetectionSuccess] = useState<string | null>(null);
-  const [showAiDetectionConfirmation, setShowAiDetectionConfirmation] = useState(false);
-  const [detectedRisks, setDetectedRisks] = useState<DetectedRisk[]>([]);
-  const [sourceData, setSourceData] = useState<{
-    assets: any[];
-    personnel: any[];
-    incidents: any[];
-    travelPlans: any[];
-  }>({
-    assets: [],
-    personnel: [],
-    incidents: [],
-    travelPlans: []
-  });
+  const [aiDetectionSummary, setAiDetectionSummary] = useState<{
+    total_risks_detected: number;
+    high_priority_risks: number;
+    confidence_score: number;
+  } | null>(null);
 
-  const { user, profile, hasPermission, organization } = useAuth();
+  const { user, profile, hasPermission } = useAuth();
   const { 
     risks, 
     userProfiles,
@@ -91,8 +78,7 @@ const RiskManagement: React.FC = () => {
         organization_id: profile?.organization_id || '',
         identified_by_user_id: formData.identified_by_user_id || user?.id || null,
         owner_user_id: formData.owner_user_id || user?.id || null,
-        department: formData.department || profile?.department || null,
-        is_ai_generated: false
+        department: formData.department || profile?.department || null
       };
 
       await addRisk(riskData);
@@ -148,6 +134,111 @@ const RiskManagement: React.FC = () => {
     setShowEditForm(true);
   };
 
+  const handleAiDetectRisks = async () => {
+    if (!profile?.organization_id) return;
+    
+    setAiDetectionLoading(true);
+    setAiDetectionError(null);
+    setShowAiDetectionModal(true);
+    
+    try {
+      // Fetch all data needed for AI risk detection
+      const [
+        { data: assets },
+        { data: personnel },
+        { data: incidents },
+        { data: travelPlans }
+      ] = await Promise.all([
+        supabase.from('assets').select('*'),
+        supabase.from('personnel_details').select('*'),
+        supabase.from('incident_reports').select('*'),
+        supabase.from('travel_plans').select('*')
+      ]);
+      
+      // Aggregate all data for the AI service
+      const aggregateData = {
+        assets: assets || [],
+        personnel: personnel || [],
+        incidents: incidents || [],
+        travelPlans: travelPlans || [],
+        risks: risks
+      };
+      
+      // Call the AI service to detect risks
+      const result = await aiService.detectRisks(profile.organization_id, aggregateData);
+      
+      // Update state with the results
+      setAiDetectedRisks(result.risks);
+      setAiDetectionSummary(result.summary);
+    } catch (err) {
+      console.error('Error detecting risks:', err);
+      setAiDetectionError('Failed to detect risks. Please try again later.');
+    } finally {
+      setAiDetectionLoading(false);
+    }
+  };
+
+  const handleApproveRisk = async (risk: DetectedRisk) => {
+    try {
+      // Convert the detected risk to a risk object
+      const riskData = {
+        title: risk.title,
+        description: risk.description,
+        category: risk.category,
+        impact: risk.impact,
+        likelihood: risk.likelihood,
+        status: 'identified',
+        department: risk.department || profile?.department,
+        organization_id: profile?.organization_id || '',
+        identified_by_user_id: user?.id,
+        is_ai_generated: true,
+        ai_confidence: risk.confidence,
+        ai_detection_date: new Date().toISOString(),
+        source_asset_id: risk.source_type === 'asset' ? risk.source_id : null,
+        source_personnel_id: risk.source_type === 'personnel' ? risk.source_id : null,
+        source_incident_id: risk.source_type === 'incident' ? risk.source_id : null,
+        source_travel_plan_id: risk.source_type === 'travel' ? risk.source_id : null,
+        mitigation_plan: risk.recommendations.join('\n')
+      };
+      
+      // Add the risk
+      await addRisk(riskData);
+      
+      // Remove the risk from the detected risks list
+      setAiDetectedRisks(prev => prev.filter(r => r !== risk));
+      
+      // Update the summary
+      if (aiDetectionSummary) {
+        setAiDetectionSummary({
+          ...aiDetectionSummary,
+          total_risks_detected: aiDetectionSummary.total_risks_detected - 1,
+          high_priority_risks: ['high', 'very_high'].includes(risk.impact) ? 
+            aiDetectionSummary.high_priority_risks - 1 : 
+            aiDetectionSummary.high_priority_risks
+        });
+      }
+    } catch (err) {
+      console.error('Error approving risk:', err);
+    }
+  };
+
+  const handleApproveAllRisks = async () => {
+    try {
+      // Create a copy of the risks to process
+      const risksToProcess = [...aiDetectedRisks];
+      
+      // Process each risk
+      for (const risk of risksToProcess) {
+        await handleApproveRisk(risk);
+      }
+      
+      // Close the modal after all risks are processed
+      setShowAiDetectionModal(false);
+    } catch (err) {
+      console.error('Error approving all risks:', err);
+    }
+  };
+
   const getRiskLevelColor = (score: number) => {
     if (score <= 5) return 'text-green-600 bg-green-100 border-green-200';
     if (score <= 12) return 'text-yellow-600 bg-yellow-100 border-yellow-200';
@@ -196,62 +287,6 @@ const RiskManagement: React.FC = () => {
     }
   };
 
-  const getSourceTypeIcon = (risk: Risk) => {
-    if (risk.source_asset_id) return <Building className="w-4 h-4 text-blue-500" />;
-    if (risk.source_personnel_id) return <User className="w-4 h-4 text-green-500" />;
-    if (risk.source_incident_id) return <AlertTriangle className="w-4 h-4 text-red-500" />;
-    if (risk.source_travel_plan_id) return <Plane className="w-4 h-4 text-orange-500" />;
-    return null;
-  };
-
-  const getSourceTypeName = (risk: Risk): string => {
-    if (risk.source_asset_id) return 'Asset';
-    if (risk.source_personnel_id) return 'Personnel';
-    if (risk.source_incident_id) return 'Incident';
-    if (risk.source_travel_plan_id) return 'Travel Plan';
-    return 'Unknown';
-  };
-
-  const getSourceName = async (risk: Risk): Promise<string> => {
-    if (risk.source_asset_id) {
-      const { data } = await supabase
-        .from('assets')
-        .select('name')
-        .eq('id', risk.source_asset_id)
-        .single();
-      return data?.name || 'Unknown Asset';
-    }
-    
-    if (risk.source_personnel_id) {
-      const { data } = await supabase
-        .from('personnel_details')
-        .select('name')
-        .eq('id', risk.source_personnel_id)
-        .single();
-      return data?.name || 'Unknown Personnel';
-    }
-    
-    if (risk.source_incident_id) {
-      const { data } = await supabase
-        .from('incident_reports')
-        .select('title')
-        .eq('id', risk.source_incident_id)
-        .single();
-      return data?.title || 'Unknown Incident';
-    }
-    
-    if (risk.source_travel_plan_id) {
-      const { data } = await supabase
-        .from('travel_plans')
-        .select('traveler_name, destination')
-        .eq('id', risk.source_travel_plan_id)
-        .single();
-      return data ? `${data.traveler_name}'s travel to ${(data.destination as any).city}` : 'Unknown Travel Plan';
-    }
-    
-    return 'Unknown Source';
-  };
-
   const filteredRisks = risks.filter(risk => {
     const matchesSearch = risk.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          risk.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -264,15 +299,7 @@ const RiskManagement: React.FC = () => {
     else if (filterRiskLevel === 'high') matchesRiskLevel = risk.risk_score > 12 && risk.risk_score <= 20;
     else if (filterRiskLevel === 'critical') matchesRiskLevel = risk.risk_score > 20;
     
-    let matchesSource = true;
-    if (filterSource === 'ai') matchesSource = risk.is_ai_generated === true;
-    else if (filterSource === 'manual') matchesSource = risk.is_ai_generated !== true;
-    else if (filterSource === 'asset') matchesSource = risk.source_asset_id !== null;
-    else if (filterSource === 'personnel') matchesSource = risk.source_personnel_id !== null;
-    else if (filterSource === 'incident') matchesSource = risk.source_incident_id !== null;
-    else if (filterSource === 'travel') matchesSource = risk.source_travel_plan_id !== null;
-    
-    return matchesSearch && matchesCategory && matchesStatus && matchesRiskLevel && matchesSource;
+    return matchesSearch && matchesCategory && matchesStatus && matchesRiskLevel;
   });
 
   const sortedRisks = [...filteredRisks].sort((a, b) => {
@@ -302,121 +329,9 @@ const RiskManagement: React.FC = () => {
     medium: risks.filter(r => r.risk_score > 5 && r.risk_score <= 12).length,
     low: risks.filter(r => r.risk_score <= 5).length,
     open: risks.filter(r => !['closed', 'mitigated'].includes(r.status)).length,
-    aiGenerated: risks.filter(r => r.is_ai_generated).length,
-    avgScore: risks.length > 0 ? Math.round(risks.reduce((sum, r) => sum + r.risk_score, 0) / risks.length) : 0
+    avgScore: risks.length > 0 ? Math.round(risks.reduce((sum, r) => sum + r.risk_score, 0) / risks.length) : 0,
+    aiGenerated: risks.filter(r => r.is_ai_generated).length
   };
-
-  const handleAiRiskDetection = async () => {
-    try {
-      setAiDetectionLoading(true);
-      setAiDetectionError(null);
-      setAiDetectionSuccess(null);
-      
-      // Fetch all necessary data for AI risk detection
-      const [
-        { data: assets },
-        { data: personnel },
-        { data: incidents },
-        { data: travelPlans }
-      ] = await Promise.all([
-        supabase.from('assets').select('*'),
-        supabase.from('personnel_details').select('*'),
-        supabase.from('incident_reports').select('*'),
-        supabase.from('travel_plans').select('*')
-      ]);
-      
-      // Store source data for reference when creating risks
-      setSourceData({
-        assets: assets || [],
-        personnel: personnel || [],
-        incidents: incidents || [],
-        travelPlans: travelPlans || []
-      });
-      
-      // Prepare aggregate data for AI analysis
-      const aggregateData = {
-        assets: assets || [],
-        personnel: personnel || [],
-        incidents: incidents || [],
-        travelPlans: travelPlans || [],
-        risks: risks || []
-      };
-      
-      // Call AI service to detect risks
-      const result = await aiService.detectRisks(profile?.organization_id || '', aggregateData);
-      
-      // Store detected risks for confirmation
-      setDetectedRisks(result.risks);
-      
-      // Show confirmation dialog with detected risks
-      if (result.risks.length > 0) {
-        setShowAiDetectionConfirmation(true);
-      } else {
-        setAiDetectionSuccess('No new risks detected');
-      }
-    } catch (error) {
-      console.error('Error detecting risks:', error);
-      setAiDetectionError('Failed to detect risks. Please try again.');
-    } finally {
-      setAiDetectionLoading(false);
-    }
-  };
-
-  const confirmAiRiskDetection = async () => {
-    try {
-      setAiDetectionLoading(true);
-      
-      // Create each detected risk
-      let createdCount = 0;
-      
-      for (const detectedRisk of detectedRisks) {
-        // Map the detected risk to the risk schema
-        const riskData = {
-          organization_id: profile?.organization_id || '',
-          title: detectedRisk.title,
-          description: detectedRisk.description,
-          category: detectedRisk.category,
-          impact: detectedRisk.impact,
-          likelihood: detectedRisk.likelihood,
-          status: 'identified',
-          is_ai_generated: true,
-          ai_confidence: detectedRisk.confidence,
-          ai_detection_date: new Date().toISOString(),
-          source_asset_id: detectedRisk.source_type === 'asset' ? detectedRisk.source_id : null,
-          source_personnel_id: detectedRisk.source_type === 'personnel' ? detectedRisk.source_id : null,
-          source_incident_id: detectedRisk.source_type === 'incident' ? detectedRisk.source_id : null,
-          source_travel_plan_id: detectedRisk.source_type === 'travel' ? detectedRisk.source_id : null,
-          department: detectedRisk.department || null,
-          mitigation_plan: detectedRisk.recommendations.join('\n\n')
-        };
-        
-        // Add the risk
-        await addRisk(riskData);
-        createdCount++;
-      }
-      
-      // Close the confirmation dialog
-      setShowAiDetectionConfirmation(false);
-      
-      // Show success message
-      setAiDetectionSuccess(`Successfully created ${createdCount} AI-detected risks`);
-      
-      // Refresh risks
-      await fetchRisks();
-      
-      // Clear detected risks
-      setDetectedRisks([]);
-    } catch (error) {
-      console.error('Error creating AI-detected risks:', error);
-      setAiDetectionError('Failed to create AI-detected risks. Please try again.');
-    } finally {
-      setAiDetectionLoading(false);
-    }
-  };
-
-  // Check if AI risk detection is enabled in organization settings
-  const isAiRiskDetectionEnabled = organization?.settings?.ai?.enabled && 
-                                  organization?.settings?.ai?.riskDetection?.enabled;
 
   if (loading && risks.length === 0) {
     return (
@@ -438,25 +353,13 @@ const RiskManagement: React.FC = () => {
           <p className="text-gray-600">Identify, assess, and mitigate organizational risks</p>
         </div>
         <div className="flex items-center space-x-3">
-          {isAiRiskDetectionEnabled && (
-            <button
-              onClick={handleAiRiskDetection}
-              disabled={aiDetectionLoading}
-              className="flex items-center space-x-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50"
-            >
-              {aiDetectionLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Detecting Risks...</span>
-                </>
-              ) : (
-                <>
-                  <Brain className="w-4 h-4" />
-                  <span>AI Detect Risks</span>
-                </>
-              )}
-            </button>
-          )}
+          <button
+            onClick={handleAiDetectRisks}
+            className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            <Brain className="w-4 h-4" />
+            <span>AI Detect Risks</span>
+          </button>
           <button
             onClick={() => setShowAddForm(true)}
             className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
@@ -478,35 +381,9 @@ const RiskManagement: React.FC = () => {
         </div>
       )}
 
-      {aiDetectionError && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2">
-          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
-          <span className="text-red-700 text-sm">{aiDetectionError}</span>
-          <button 
-            onClick={() => setAiDetectionError(null)}
-            className="ml-auto text-red-500 hover:text-red-700"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {aiDetectionSuccess && (
-        <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center space-x-2">
-          <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-          <span className="text-green-700 text-sm">{aiDetectionSuccess}</span>
-          <button 
-            onClick={() => setAiDetectionSuccess(null)}
-            className="ml-auto text-green-500 hover:text-green-700"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
       {/* Statistics Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 lg:col-span-2">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">Total Risks</p>
@@ -569,20 +446,10 @@ const RiskManagement: React.FC = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">AI Detected</p>
+              <p className="text-sm text-gray-600">AI Generated</p>
               <p className="text-2xl font-bold text-purple-600">{riskStats.aiGenerated}</p>
             </div>
             <Brain className="w-8 h-8 text-purple-500" />
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Avg Score</p>
-              <p className="text-2xl font-bold text-purple-600">{riskStats.avgScore}</p>
-            </div>
-            <Activity className="w-8 h-8 text-purple-500" />
           </div>
         </div>
       </div>
@@ -639,20 +506,6 @@ const RiskManagement: React.FC = () => {
               <option value="medium">Medium (6-12)</option>
               <option value="high">High (13-20)</option>
               <option value="critical">Critical (21-25)</option>
-            </select>
-            
-            <select
-              value={filterSource}
-              onChange={(e) => setFilterSource(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="all">All Sources</option>
-              <option value="manual">Manual Entry</option>
-              <option value="ai">AI Detected</option>
-              <option value="asset">Asset-related</option>
-              <option value="personnel">Personnel-related</option>
-              <option value="incident">Incident-related</option>
-              <option value="travel">Travel-related</option>
             </select>
           </div>
           
@@ -721,7 +574,7 @@ const RiskManagement: React.FC = () => {
                   Department
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Source
+                  Due Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
@@ -733,7 +586,7 @@ const RiskManagement: React.FC = () => {
                 <tr key={risk.id} className={`hover:bg-gray-50 ${risk.is_ai_generated ? 'bg-purple-50' : ''}`}>
                   <td className="px-6 py-4">
                     <div className="flex items-center">
-                      <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center">
+                      <div className={`w-10 h-10 ${risk.is_ai_generated ? 'bg-purple-600' : 'bg-red-600'} rounded-lg flex items-center justify-center`}>
                         {risk.is_ai_generated ? (
                           <Brain className="w-5 h-5 text-white" />
                         ) : (
@@ -741,15 +594,7 @@ const RiskManagement: React.FC = () => {
                         )}
                       </div>
                       <div className="ml-4">
-                        <div className="flex items-center space-x-2">
-                          <div className="text-sm font-medium text-gray-900">{risk.title}</div>
-                          {risk.is_ai_generated && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                              <Brain className="w-3 h-3 mr-1" />
-                              AI Detected
-                            </span>
-                          )}
-                        </div>
+                        <div className="text-sm font-medium text-gray-900">{risk.title}</div>
                         <div className="text-sm text-gray-500 truncate max-w-xs">{risk.description}</div>
                       </div>
                     </div>
@@ -765,12 +610,6 @@ const RiskManagement: React.FC = () => {
                         {risk.risk_score}
                       </span>
                       <span className="text-xs text-gray-500">{getRiskLevel(risk.risk_score)}</span>
-                      {risk.is_ai_generated && risk.ai_confidence && (
-                        <div className="flex items-center space-x-1">
-                          <Zap className="w-3 h-3 text-purple-500" />
-                          <span className="text-xs text-purple-600">{risk.ai_confidence}%</span>
-                        </div>
-                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -793,12 +632,9 @@ const RiskManagement: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {risk.is_ai_generated && getSourceTypeIcon(risk) && (
-                      <div className="flex items-center space-x-1">
-                        {getSourceTypeIcon(risk)}
-                        <span className="text-xs text-gray-700">{getSourceTypeName(risk)}</span>
-                      </div>
-                    )}
+                    <div className="text-sm text-gray-900">
+                      {risk.due_date ? new Date(risk.due_date).toLocaleDateString() : 'No due date'}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex items-center space-x-2">
@@ -865,7 +701,7 @@ const RiskManagement: React.FC = () => {
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="w-16 h-16 bg-red-600 rounded-lg flex items-center justify-center">
+              <div className={`w-16 h-16 ${selectedRisk?.is_ai_generated ? 'bg-purple-600' : 'bg-red-600'} rounded-lg flex items-center justify-center`}>
                 {selectedRisk?.is_ai_generated ? (
                   <Brain className="w-8 h-8 text-white" />
                 ) : (
@@ -873,15 +709,7 @@ const RiskManagement: React.FC = () => {
                 )}
               </div>
               <div>
-                <div className="flex items-center space-x-2">
-                  <h2 className="text-2xl font-bold text-gray-900">{selectedRisk?.title}</h2>
-                  {selectedRisk?.is_ai_generated && (
-                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                      <Brain className="w-3 h-3 mr-1" />
-                      AI Detected
-                    </span>
-                  )}
-                </div>
+                <h2 className="text-2xl font-bold text-gray-900">{selectedRisk?.title}</h2>
                 <div className="flex items-center space-x-2 mt-1">
                   <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getRiskLevelColor(selectedRisk?.risk_score)}`}>
                     Risk Score: {selectedRisk?.risk_score}
@@ -889,6 +717,12 @@ const RiskManagement: React.FC = () => {
                   <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
                     {selectedRisk?.category && getCategoryLabel(selectedRisk.category)}
                   </span>
+                  {selectedRisk?.is_ai_generated && (
+                    <span className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-700">
+                      <Brain className="w-3 h-3 mr-1" />
+                      AI Generated
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -927,48 +761,36 @@ const RiskManagement: React.FC = () => {
             <p className="text-gray-700">{selectedRisk?.description}</p>
           </div>
           
-          {/* AI Detection Information */}
+          {/* AI Detection Info */}
           {selectedRisk?.is_ai_generated && (
             <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
               <div className="flex items-center space-x-2 mb-2">
                 <Brain className="w-5 h-5 text-purple-600" />
                 <h3 className="text-lg font-semibold text-purple-900">AI Detection Details</h3>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-purple-700 mb-2">
-                    This risk was automatically detected by AI on {new Date(selectedRisk?.ai_detection_date).toLocaleString()}.
-                  </p>
-                  
-                  <div className="flex items-center space-x-2 mb-2">
-                    <span className="text-sm font-medium text-purple-800">Confidence:</span>
-                    <div className="flex items-center space-x-1">
-                      <span className="text-sm font-bold text-purple-900">{selectedRisk?.ai_confidence}%</span>
-                      <Zap className="w-4 h-4 text-yellow-500" />
-                    </div>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-purple-700">Detection Date:</span>
+                  <span className="text-sm font-medium text-purple-900">
+                    {selectedRisk?.ai_detection_date ? new Date(selectedRisk.ai_detection_date).toLocaleString() : 'Unknown'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-purple-700">AI Confidence:</span>
+                  <span className="text-sm font-medium text-purple-900">{selectedRisk?.ai_confidence || 'Unknown'}%</span>
+                </div>
+                {(selectedRisk?.source_asset_id || selectedRisk?.source_personnel_id || 
+                  selectedRisk?.source_incident_id || selectedRisk?.source_travel_plan_id) && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-purple-700">Source:</span>
+                    <span className="text-sm font-medium text-purple-900">
+                      {selectedRisk?.source_asset_id ? 'Asset' : 
+                       selectedRisk?.source_personnel_id ? 'Personnel' : 
+                       selectedRisk?.source_incident_id ? 'Incident' : 
+                       selectedRisk?.source_travel_plan_id ? 'Travel Plan' : 'Unknown'}
+                    </span>
                   </div>
-                  
-                  {(selectedRisk?.source_asset_id || 
-                    selectedRisk?.source_personnel_id || 
-                    selectedRisk?.source_incident_id || 
-                    selectedRisk?.source_travel_plan_id) && (
-                    <div className="flex items-start space-x-2">
-                      <span className="text-sm font-medium text-purple-800">Source:</span>
-                      <div className="flex items-center space-x-1">
-                        {getSourceTypeIcon(selectedRisk)}
-                        <span className="text-sm text-purple-900">{getSourceTypeName(selectedRisk)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="bg-white rounded-lg p-3 border border-purple-100">
-                  <p className="text-xs text-gray-500 mb-1">AI Detection Explanation</p>
-                  <p className="text-sm text-gray-700">
-                    This risk was detected based on pattern analysis of historical data, current security posture, and predictive modeling.
-                  </p>
-                </div>
+                )}
               </div>
             </div>
           )}
@@ -1054,131 +876,155 @@ const RiskManagement: React.FC = () => {
         type="danger"
       />
 
-      {/* AI Risk Detection Confirmation Modal */}
+      {/* AI Risk Detection Modal */}
       <Modal
-        isOpen={showAiDetectionConfirmation}
-        onClose={() => setShowAiDetectionConfirmation(false)}
-        title="AI Risk Detection Results"
+        isOpen={showAiDetectionModal}
+        onClose={() => setShowAiDetectionModal(false)}
+        title="AI Risk Detection"
         size="xl"
       >
         <div className="p-6 space-y-6">
-          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
-            <div className="flex items-center space-x-2 mb-2">
-              <Brain className="w-5 h-5 text-purple-600" />
-              <h3 className="text-lg font-semibold text-purple-900">AI Risk Detection</h3>
+          {aiDetectionLoading ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="w-12 h-12 animate-spin text-purple-600 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">AI Risk Detection in Progress</h3>
+              <p className="text-gray-600 text-center max-w-md">
+                Our AI is analyzing your organization's data to identify potential risks that may have been overlooked.
+                This process may take a few moments.
+              </p>
             </div>
-            <p className="text-sm text-purple-700">
-              The AI has detected {detectedRisks.length} potential new risks based on pattern analysis of your organization's data.
-              Review the detected risks below and confirm to add them to your risk register.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Detected Risks ({detectedRisks.length})</h3>
-            
-            {detectedRisks.length === 0 ? (
-              <div className="bg-gray-50 p-8 text-center rounded-lg border border-gray-200">
-                <Lightbulb className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500">No new risks detected</p>
-                <p className="text-sm text-gray-400 mt-1">The AI did not identify any new risks based on your current data.</p>
+          ) : aiDetectionError ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Detecting Risks</h3>
+              <p className="text-red-600 text-center max-w-md">{aiDetectionError}</p>
+              <button
+                onClick={handleAiDetectRisks}
+                className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : aiDetectedRisks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <CheckCircle className="w-12 h-12 text-green-500 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No New Risks Detected</h3>
+              <p className="text-gray-600 text-center max-w-md">
+                Our AI analysis did not identify any new risks that aren't already covered in your risk register.
+                Your organization's risk management appears to be comprehensive.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Brain className="w-5 h-5 text-purple-600" />
+                    <h3 className="text-lg font-semibold text-purple-900">AI Risk Detection Results</h3>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-purple-700">Confidence: {aiDetectionSummary?.confidence_score || 0}%</span>
+                  </div>
+                </div>
+                <p className="text-sm text-purple-700 mt-2">
+                  The AI has detected {aiDetectionSummary?.total_risks_detected || 0} potential new risks, 
+                  including {aiDetectionSummary?.high_priority_risks || 0} high priority risks that may require immediate attention.
+                </p>
+                <div className="flex justify-end mt-4">
+                  <button
+                    onClick={handleApproveAllRisks}
+                    className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Approve All Risks</span>
+                  </button>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-4 max-h-96 overflow-y-auto">
-                {detectedRisks.map((risk, index) => (
-                  <div key={index} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+              
+              <div className="space-y-4">
+                {aiDetectedRisks.map((risk, index) => (
+                  <div key={index} className="bg-white border border-purple-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-2">
                         <Brain className="w-5 h-5 text-purple-600" />
-                        <h4 className="font-medium text-gray-900">{risk.title}</h4>
+                        <h4 className="text-lg font-semibold text-gray-900">{risk.title}</h4>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${
-                          risk.impact === 'very_high' || risk.likelihood === 'very_high' ? 'text-red-600 bg-red-100 border-red-200' :
-                          risk.impact === 'high' || risk.likelihood === 'high' ? 'text-orange-600 bg-orange-100 border-orange-200' :
-                          'text-yellow-600 bg-yellow-100 border-yellow-200'
-                        }`}>
-                          {risk.impact.replace('_', ' ')} Impact / {risk.likelihood.replace('_', ' ')} Likelihood
+                        <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                          Confidence: {risk.confidence}%
                         </span>
-                        <div className="flex items-center space-x-1">
-                          <Zap className="w-3 h-3 text-purple-500" />
-                          <span className="text-xs text-purple-600">{risk.confidence}%</span>
-                        </div>
+                        <button
+                          onClick={() => handleApproveRisk(risk)}
+                          className="p-1 text-green-600 hover:text-green-800"
+                          title="Approve risk"
+                        >
+                          <CheckCircle className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setAiDetectedRisks(prev => prev.filter(r => r !== risk));
+                            if (aiDetectionSummary) {
+                              setAiDetectionSummary({
+                                ...aiDetectionSummary,
+                                total_risks_detected: aiDetectionSummary.total_risks_detected - 1,
+                                high_priority_risks: ['high', 'very_high'].includes(risk.impact) ? 
+                                  aiDetectionSummary.high_priority_risks - 1 : 
+                                  aiDetectionSummary.high_priority_risks
+                              });
+                            }
+                          }}
+                          className="p-1 text-red-600 hover:text-red-800"
+                          title="Dismiss risk"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
                       </div>
                     </div>
                     
-                    <p className="text-sm text-gray-700 mb-3">{risk.description}</p>
+                    <p className="text-gray-700 mb-3">{risk.description}</p>
                     
-                    <div className="flex items-center space-x-3 text-xs text-gray-500">
-                      <span className="inline-flex px-2 py-1 rounded-full bg-blue-100 text-blue-700">
-                        {getCategoryLabel(risk.category)}
-                      </span>
-                      
-                      {risk.source_type && risk.source_id && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                          {risk.source_type === 'asset' && <Building className="w-3 h-3 mr-1" />}
-                          {risk.source_type === 'personnel' && <User className="w-3 h-3 mr-1" />}
-                          {risk.source_type === 'incident' && <AlertTriangle className="w-3 h-3 mr-1" />}
-                          {risk.source_type === 'travel' && <Plane className="w-3 h-3 mr-1" />}
-                          {risk.source_type === 'pattern' && <Activity className="w-3 h-3 mr-1" />}
-                          {risk.source_type.charAt(0).toUpperCase() + risk.source_type.slice(1)} Source
-                        </span>
-                      )}
-                      
-                      {risk.department && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                          <Building className="w-3 h-3 mr-1" />
-                          {risk.department}
-                        </span>
-                      )}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                      <div>
+                        <span className="text-xs text-gray-500">Category</span>
+                        <p className="text-sm font-medium text-gray-900">{getCategoryLabel(risk.category)}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500">Impact / Likelihood</span>
+                        <p className="text-sm font-medium text-gray-900 capitalize">
+                          {risk.impact.replace('_', ' ')} / {risk.likelihood.replace('_', ' ')}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500">Source</span>
+                        <p className="text-sm font-medium text-gray-900 capitalize">
+                          {risk.source_type}
+                          {risk.source_id ? ` (ID: ${risk.source_id.slice(0, 8)}...)` : ''}
+                        </p>
+                      </div>
                     </div>
                     
-                    {risk.recommendations && risk.recommendations.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <p className="text-xs font-medium text-gray-500 mb-1">Recommendations:</p>
-                        <ul className="text-xs text-gray-600 space-y-1">
-                          {risk.recommendations.slice(0, 2).map((rec, i) => (
-                            <li key={i} className="flex items-start space-x-1">
-                              <Shield className="w-3 h-3 mt-0.5 text-green-500 flex-shrink-0" />
+                    {risk.recommendations.length > 0 && (
+                      <div className="mb-3">
+                        <span className="text-xs text-gray-500">Recommendations</span>
+                        <ul className="mt-1 space-y-1">
+                          {risk.recommendations.map((rec, idx) => (
+                            <li key={idx} className="text-sm text-gray-700 flex items-start">
+                              <Shield className="w-3 h-3 text-purple-500 mt-1 mr-1 flex-shrink-0" />
                               <span>{rec}</span>
                             </li>
                           ))}
-                          {risk.recommendations.length > 2 && (
-                            <li className="text-xs text-blue-600">+ {risk.recommendations.length - 2} more recommendations</li>
-                          )}
                         </ul>
                       </div>
                     )}
+                    
+                    <div className="text-xs text-gray-500">
+                      <span className="font-medium">AI Explanation:</span> {risk.explanation}
+                    </div>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        </div>
-        
-        <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
-          <button
-            onClick={() => setShowAiDetectionConfirmation(false)}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={confirmAiRiskDetection}
-            disabled={detectedRisks.length === 0 || aiDetectionLoading}
-            className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-          >
-            {aiDetectionLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Processing...</span>
-              </>
-            ) : (
-              <>
-                <Brain className="w-4 h-4" />
-                <span>Add {detectedRisks.length} AI-Detected Risks</span>
-              </>
-            )}
-          </button>
+            </>
+          )}
         </div>
       </Modal>
     </div>
