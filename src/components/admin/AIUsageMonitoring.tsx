@@ -53,16 +53,55 @@ interface AISettings {
   };
 }
 
+// Default AI settings structure to ensure all properties are defined
+const DEFAULT_AI_SETTINGS: AISettings = {
+  enabled: true,
+  model: 'gpt-4',
+  tokenLimit: 1000000,
+  riskDetection: {
+    enabled: false,
+    frequency: 'manual',
+    threshold: 70,
+    autoApprove: false,
+    notifyOnDetection: true
+  },
+  settings: {
+    temperature: 0.7,
+    contextWindow: 8000,
+    responseLength: 'medium'
+  },
+  notifications: {
+    approachingLimit: true,
+    limitThreshold: 80,
+    weeklyUsageReport: true
+  }
+};
+
+// Deep merge function to combine default settings with fetched settings
+const deepMerge = (target: any, source: any): any => {
+  const result = { ...target };
+  
+  for (const key in source) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      result[key] = deepMerge(target[key] || {}, source[key]);
+    } else {
+      result[key] = source[key];
+    }
+  }
+  
+  return result;
+};
+
 const AIUsageMonitoring: React.FC = () => {
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
   const [usageLogs, setUsageLogs] = useState<AIUsageLog[]>([]);
-  const [aiSettings, setAISettings] = useState<AISettings | null>(null);
+  const [aiSettings, setAISettings] = useState<AISettings>(DEFAULT_AI_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
   const [showSettings, setShowSettings] = useState(false);
   const [updatingSettings, setUpdatingSettings] = useState(false);
-  const [settingsForm, setSettingsForm] = useState<AISettings | null>(null);
+  const [settingsForm, setSettingsForm] = useState<AISettings>(DEFAULT_AI_SETTINGS);
 
   const { profile, organization, hasPermission } = useAuth();
 
@@ -97,31 +136,12 @@ const AIUsageMonitoring: React.FC = () => {
       
       if (orgError) throw orgError;
       
-      const settings = orgData?.settings?.ai || {
-        enabled: true,
-        model: 'gpt-4',
-        tokenLimit: 1000000,
-        riskDetection: {
-          enabled: false,
-          frequency: 'manual',
-          threshold: 70,
-          autoApprove: false,
-          notifyOnDetection: true
-        },
-        settings: {
-          temperature: 0.7,
-          contextWindow: 8000,
-          responseLength: 'medium'
-        },
-        notifications: {
-          approachingLimit: true,
-          limitThreshold: 80,
-          weeklyUsageReport: true
-        }
-      };
+      // Deep merge fetched settings with default settings to ensure all properties exist
+      const fetchedAISettings = orgData?.settings?.ai || {};
+      const mergedSettings = deepMerge(DEFAULT_AI_SETTINGS, fetchedAISettings);
       
-      setAISettings(settings);
-      setSettingsForm(settings);
+      setAISettings(mergedSettings);
+      setSettingsForm(mergedSettings);
       
     } catch (err) {
       console.error('Error fetching AI usage data:', err);
@@ -145,9 +165,10 @@ const AIUsageMonitoring: React.FC = () => {
       
       if (fetchError) throw fetchError;
       
+      // Deep merge the updated settings with existing settings
       const updatedSettings = {
         ...orgData.settings,
-        ai: settingsForm
+        ai: deepMerge(DEFAULT_AI_SETTINGS, settingsForm)
       };
       
       const { error: updateError } = await supabase
@@ -586,7 +607,7 @@ const AIUsageMonitoring: React.FC = () => {
       </div>
 
       {/* AI Settings Modal */}
-      {showSettings && settingsForm && (
+      {showSettings && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full">
             <div className="p-6 border-b border-gray-200">
