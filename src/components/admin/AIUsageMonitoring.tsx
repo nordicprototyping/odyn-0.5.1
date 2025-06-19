@@ -28,7 +28,7 @@ interface AIUsageLog {
   operation_type: string;
   tokens_used: number;
   timestamp: string;
-  user_email?: string;
+  user_display_name?: string;
 }
 
 interface AISettings {
@@ -103,6 +103,7 @@ const AIUsageMonitoring: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [updatingSettings, setUpdatingSettings] = useState(false);
   const [settingsForm, setSettingsForm] = useState<AISettings>(DEFAULT_AI_SETTINGS);
+  const [userProfiles, setUserProfiles] = useState<Record<string, string>>({});
 
   const { profile, organization, hasPermission } = useAuth();
 
@@ -125,8 +126,38 @@ const AIUsageMonitoring: React.FC = () => {
       const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
       const logs = await aiService.getTokenUsageHistory(organizationId, days);
       
-      // Set usage logs without fetching user emails (removed admin API call)
-      setUsageLogs(logs || []);
+      // Collect all unique user IDs from logs
+      const userIds = new Set<string>();
+      logs.forEach(log => {
+        if (log.user_id) userIds.add(log.user_id);
+      });
+      
+      // Fetch user profiles for these user IDs
+      if (userIds.size > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('user_profiles')
+          .select('user_id, full_name, email')
+          .in('user_id', Array.from(userIds));
+        
+        if (profilesError) {
+          console.error('Error fetching user profiles:', profilesError);
+        } else {
+          // Create a map of user_id to display name
+          const profilesMap: Record<string, string> = {};
+          (profilesData || []).forEach(profile => {
+            profilesMap[profile.user_id] = profile.full_name || profile.email || profile.user_id;
+          });
+          setUserProfiles(profilesMap);
+        }
+      }
+      
+      // Add display names to logs
+      const logsWithUserNames = logs.map(log => ({
+        ...log,
+        user_display_name: log.user_id ? userProfiles[log.user_id] || 'Unknown User' : 'System'
+      }));
+      
+      setUsageLogs(logsWithUserNames);
       
       // Fetch AI settings
       const { data: orgData, error: orgError } = await supabase
@@ -249,16 +280,23 @@ const AIUsageMonitoring: React.FC = () => {
   };
 
   const getUsageByUser = (): { user: string; tokens: number }[] => {
-    const userMap = new Map<string, number>();
+    const userMap = new Map<string, { id: string; name: string; tokens: number }>();
     
     usageLogs.forEach(log => {
-      const user = log.user_id || 'System';
-      userMap.set(user, (userMap.get(user) || 0) + log.tokens_used);
+      const userId = log.user_id || 'System';
+      const userName = log.user_display_name || userProfiles[userId] || 'System';
+      
+      if (!userMap.has(userId)) {
+        userMap.set(userId, { id: userId, name: userName, tokens: 0 });
+      }
+      
+      const userData = userMap.get(userId)!;
+      userData.tokens += log.tokens_used;
     });
     
     const result: { user: string; tokens: number }[] = [];
-    userMap.forEach((tokens, user) => {
-      result.push({ user, tokens });
+    userMap.forEach(userData => {
+      result.push({ user: userData.name, tokens: userData.tokens });
     });
     
     return result.sort((a, b) => b.tokens - a.tokens);
@@ -445,14 +483,14 @@ const AIUsageMonitoring: React.FC = () => {
             ) : (
               <div className="h-full flex items-end space-x-1">
                 {getUsageByDay().map((day, index) => {
-                  const maxTokens = Math.max(...getUsageByDay().map(d => d.tokens));
-                  const height = maxTokens > 0 ? (day.tokens / maxTokens) * 100 : 0;
+                  const maxTokens = Math.max(1, ...getUsageByDay().map(d => d.tokens));
+                  const height = day.tokens > 0 ? Math.max(5, (day.tokens / maxTokens) * 100) : 0;
                   
                   return (
                     <div key={index} className="flex-1 flex flex-col items-center">
                       <div 
                         className="w-full bg-purple-500 rounded-t"
-                        style={{ height: `${Math.max(5, height)}%` }}
+                        style={{ height: `${height}%` }}
                         title={`${day.tokens.toLocaleString()} tokens on ${new Date(day.date).toLocaleDateString()}`}
                       ></div>
                       {index % Math.ceil(getUsageByDay().length / 10) === 0 && (
@@ -473,27 +511,32 @@ const AIUsageMonitoring: React.FC = () => {
           {/* Usage by Type */}
           <div>
             <h3 className="text-sm font-medium text-gray-700 mb-4">Usage by Operation Type</h3>
-            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 overflow-hidden">
               {getUsageByType().length === 0 ? (
                 <div className="h-40 flex items-center justify-center">
                   <p className="text-gray-500">No usage data available</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {getUsageByType().map((item, index) => (
-                    <div key={index}>
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-gray-700">{getOperationTypeLabel(item.type)}</span>
-                        <span className="text-gray-900 font-medium">{item.tokens.toLocaleString()} tokens</span>
+                  {getUsageByType().map((item, index) => {
+                    const maxTokens = Math.max(1, ...getUsageByType().map(t => t.tokens));
+                    const percentage = (item.tokens / maxTokens) * 100;
+                    
+                    return (
+                      <div key={index}>
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span className="text-gray-700">{getOperationTypeLabel(item.type)}</span>
+                          <span className="text-gray-900 font-medium">{item.tokens.toLocaleString()} tokens</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                          <div 
+                            className="bg-purple-500 h-2 rounded-full"
+                            style={{ width: `${percentage}%` }}
+                          ></div>
+                        </div>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-purple-500 h-2 rounded-full"
-                          style={{ width: `${(item.tokens / tokenUsage?.total || 0) * 100}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -502,27 +545,32 @@ const AIUsageMonitoring: React.FC = () => {
           {/* Usage by User */}
           <div>
             <h3 className="text-sm font-medium text-gray-700 mb-4">Usage by User</h3>
-            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 overflow-hidden">
               {getUsageByUser().length === 0 ? (
                 <div className="h-40 flex items-center justify-center">
                   <p className="text-gray-500">No usage data available</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {getUsageByUser().slice(0, 5).map((item, index) => (
-                    <div key={index}>
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-gray-700 truncate max-w-xs">{item.user}</span>
-                        <span className="text-gray-900 font-medium">{item.tokens.toLocaleString()} tokens</span>
+                  {getUsageByUser().slice(0, 5).map((item, index) => {
+                    const maxTokens = Math.max(1, ...getUsageByUser().map(u => u.tokens));
+                    const percentage = (item.tokens / maxTokens) * 100;
+                    
+                    return (
+                      <div key={index}>
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span className="text-gray-700 truncate max-w-xs">{item.user}</span>
+                          <span className="text-gray-900 font-medium">{item.tokens.toLocaleString()} tokens</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                          <div 
+                            className="bg-blue-500 h-2 rounded-full"
+                            style={{ width: `${percentage}%` }}
+                          ></div>
+                        </div>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-blue-500 h-2 rounded-full"
-                          style={{ width: `${(item.tokens / tokenUsage?.total || 0) * 100}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -581,7 +629,7 @@ const AIUsageMonitoring: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center text-sm text-gray-900">
                       <User className="w-4 h-4 mr-2 text-gray-400" />
-                      {log.user_id || 'System'}
+                      {log.user_display_name || userProfiles[log.user_id || ''] || log.user_id || 'System'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
