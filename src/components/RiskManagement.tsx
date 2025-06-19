@@ -37,6 +37,12 @@ import { supabase } from '../lib/supabase';
 
 type Risk = any;
 
+// Utility function to validate UUID format
+const isValidUUID = (str: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+};
+
 const RiskManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -181,6 +187,12 @@ const RiskManagement: React.FC = () => {
 
   const handleApproveRisk = async (risk: DetectedRisk) => {
     try {
+      // Validate and sanitize source IDs - only use them if they are valid UUIDs
+      const sourceAssetId = risk.source_type === 'asset' && risk.source_id && isValidUUID(risk.source_id) ? risk.source_id : null;
+      const sourcePersonnelId = risk.source_type === 'personnel' && risk.source_id && isValidUUID(risk.source_id) ? risk.source_id : null;
+      const sourceIncidentId = risk.source_type === 'incident' && risk.source_id && isValidUUID(risk.source_id) ? risk.source_id : null;
+      const sourceTravelPlanId = risk.source_type === 'travel' && risk.source_id && isValidUUID(risk.source_id) ? risk.source_id : null;
+
       // Convert the detected risk to a risk object
       const riskData = {
         title: risk.title,
@@ -195,10 +207,10 @@ const RiskManagement: React.FC = () => {
         is_ai_generated: true,
         ai_confidence: risk.confidence,
         ai_detection_date: new Date().toISOString(),
-        source_asset_id: risk.source_type === 'asset' ? risk.source_id : null,
-        source_personnel_id: risk.source_type === 'personnel' ? risk.source_id : null,
-        source_incident_id: risk.source_type === 'incident' ? risk.source_id : null,
-        source_travel_plan_id: risk.source_type === 'travel' ? risk.source_id : null,
+        source_asset_id: sourceAssetId,
+        source_personnel_id: sourcePersonnelId,
+        source_incident_id: sourceIncidentId,
+        source_travel_plan_id: sourceTravelPlanId,
         mitigation_plan: risk.recommendations.join('\n')
       };
       

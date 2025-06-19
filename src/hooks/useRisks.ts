@@ -7,6 +7,12 @@ type Risk = Database['public']['Tables']['risks']['Row'];
 type RiskInsert = Database['public']['Tables']['risks']['Insert'];
 type RiskUpdate = Database['public']['Tables']['risks']['Update'];
 
+// Utility function to validate UUID format
+const isValidUUID = (str: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+};
+
 export function useRisks() {
   const [risks, setRisks] = useState<Risk[]>([]);
   const [userProfiles, setUserProfiles] = useState<Record<string, string>>({});
@@ -31,11 +37,15 @@ export function useRisks() {
 
       setRisks(risksData || []);
 
-      // Collect all unique user IDs from risks
+      // Collect all unique user IDs from risks, but only valid UUIDs
       const userIds = new Set<string>();
       (risksData || []).forEach(risk => {
-        if (risk.owner_user_id) userIds.add(risk.owner_user_id);
-        if (risk.identified_by_user_id) userIds.add(risk.identified_by_user_id);
+        if (risk.owner_user_id && isValidUUID(risk.owner_user_id)) {
+          userIds.add(risk.owner_user_id);
+        }
+        if (risk.identified_by_user_id && isValidUUID(risk.identified_by_user_id)) {
+          userIds.add(risk.identified_by_user_id);
+        }
       });
 
       // Fetch user profiles for these user IDs
@@ -73,16 +83,22 @@ export function useRisks() {
       setLoading(true);
       setError(null);
 
-      // Ensure is_ai_generated is set (default to false if not provided)
-      const riskWithAiFlag = {
+      // Validate and sanitize user IDs before insertion
+      const sanitizedRiskData = {
         ...riskData,
         is_ai_generated: riskData.is_ai_generated || false,
-        ai_detection_date: riskData.is_ai_generated ? new Date().toISOString() : null
+        ai_detection_date: riskData.is_ai_generated ? new Date().toISOString() : null,
+        owner_user_id: riskData.owner_user_id && isValidUUID(riskData.owner_user_id) ? riskData.owner_user_id : null,
+        identified_by_user_id: riskData.identified_by_user_id && isValidUUID(riskData.identified_by_user_id) ? riskData.identified_by_user_id : null,
+        source_asset_id: riskData.source_asset_id && isValidUUID(riskData.source_asset_id) ? riskData.source_asset_id : null,
+        source_personnel_id: riskData.source_personnel_id && isValidUUID(riskData.source_personnel_id) ? riskData.source_personnel_id : null,
+        source_incident_id: riskData.source_incident_id && isValidUUID(riskData.source_incident_id) ? riskData.source_incident_id : null,
+        source_travel_plan_id: riskData.source_travel_plan_id && isValidUUID(riskData.source_travel_plan_id) ? riskData.source_travel_plan_id : null
       };
 
       const { data, error } = await supabase
         .from('risks')
-        .insert([riskWithAiFlag])
+        .insert([sanitizedRiskData])
         .select();
 
       if (error) throw error;
@@ -126,9 +142,20 @@ export function useRisks() {
       setLoading(true);
       setError(null);
 
+      // Validate and sanitize user IDs before update
+      const sanitizedRiskData = {
+        ...riskData,
+        owner_user_id: riskData.owner_user_id && isValidUUID(riskData.owner_user_id) ? riskData.owner_user_id : null,
+        identified_by_user_id: riskData.identified_by_user_id && isValidUUID(riskData.identified_by_user_id) ? riskData.identified_by_user_id : null,
+        source_asset_id: riskData.source_asset_id && isValidUUID(riskData.source_asset_id) ? riskData.source_asset_id : null,
+        source_personnel_id: riskData.source_personnel_id && isValidUUID(riskData.source_personnel_id) ? riskData.source_personnel_id : null,
+        source_incident_id: riskData.source_incident_id && isValidUUID(riskData.source_incident_id) ? riskData.source_incident_id : null,
+        source_travel_plan_id: riskData.source_travel_plan_id && isValidUUID(riskData.source_travel_plan_id) ? riskData.source_travel_plan_id : null
+      };
+
       const { data, error } = await supabase
         .from('risks')
-        .update(riskData)
+        .update(sanitizedRiskData)
         .eq('id', id)
         .select();
 
