@@ -132,6 +132,13 @@ export interface Database {
               model?: string;
               tokensUsed?: number;
               tokenLimit?: number;
+              riskDetection?: {
+                enabled?: boolean;
+                frequency?: 'daily' | 'weekly' | 'monthly' | 'manual';
+                threshold?: number;
+                autoApprove?: boolean;
+                notifyOnDetection?: boolean;
+              };
               settings?: {
                 temperature?: number;
                 contextWindow?: number;
@@ -582,6 +589,13 @@ export interface Database {
           mitigations: Record<string, any>[] | null;
           created_at: string;
           updated_at: string;
+          is_ai_generated: boolean;
+          source_asset_id: string | null;
+          source_personnel_id: string | null;
+          source_incident_id: string | null;
+          source_travel_plan_id: string | null;
+          ai_confidence: number | null;
+          ai_detection_date: string | null;
         };
         Insert: {
           id?: string;
@@ -602,6 +616,13 @@ export interface Database {
           mitigations?: Record<string, any>[] | null;
           created_at?: string;
           updated_at?: string;
+          is_ai_generated?: boolean;
+          source_asset_id?: string | null;
+          source_personnel_id?: string | null;
+          source_incident_id?: string | null;
+          source_travel_plan_id?: string | null;
+          ai_confidence?: number | null;
+          ai_detection_date?: string | null;
         };
         Update: {
           id?: string;
@@ -622,6 +643,13 @@ export interface Database {
           mitigations?: Record<string, any>[] | null;
           created_at?: string;
           updated_at?: string;
+          is_ai_generated?: boolean;
+          source_asset_id?: string | null;
+          source_personnel_id?: string | null;
+          source_incident_id?: string | null;
+          source_travel_plan_id?: string | null;
+          ai_confidence?: number | null;
+          ai_detection_date?: string | null;
         };
       };
     };

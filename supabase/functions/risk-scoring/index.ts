@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.39.0';
 
 // Define types for risk scoring requests and responses
 interface RiskScoringRequest {
-  type: 'asset' | 'personnel' | 'travel' | 'incident' | 'risk' | 'organization' | 'mitigation';
+  type: 'asset' | 'personnel' | 'travel' | 'incident' | 'risk' | 'organization' | 'mitigation' | 'detect_risks';
   data: any;
   organizationId: string;
   userId?: string;
@@ -19,6 +19,30 @@ interface RiskScoringResponse {
     nextWeek?: number;
     nextMonth?: number;
   };
+}
+
+interface DetectedRisk {
+  title: string;
+  description: string;
+  category: 'physical_security_vulnerabilities' | 'environmental_hazards' | 'natural_disasters' | 'infrastructure_failure' | 'personnel_safety_security' | 'asset_damage_loss';
+  impact: 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
+  likelihood: 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
+  source_type: 'asset' | 'personnel' | 'incident' | 'travel' | 'pattern';
+  source_id?: string;
+  department?: string;
+  confidence: number;
+  explanation: string;
+  recommendations: string[];
+}
+
+interface RiskDetectionResponse {
+  risks: DetectedRisk[];
+  summary: {
+    total_risks_detected: number;
+    high_priority_risks: number;
+    confidence_score: number;
+  };
+  token_usage: number;
 }
 
 // Define constants
@@ -136,6 +160,217 @@ async function callChutesAI(prompt: string, systemPrompt: string): Promise<any> 
   } catch (error) {
     console.error('Error calling Chutes AI:', error);
     throw error;
+  }
+}
+
+// Function to detect risks based on patterns in the data
+async function detectRisks(aggregateData: any, organizationId: string, userId: string | null): Promise<RiskDetectionResponse> {
+  const systemPrompt = `
+    You are an expert AI security risk analyst specializing in pattern detection and risk identification.
+    Your task is to analyze the provided organization data and identify potential new risks that should be added to the risk register.
+    
+    You should look for patterns across assets, personnel, incidents, travel plans, and existing risks that might indicate
+    new or emerging risks that haven't been explicitly identified yet.
+    
+    CRITICAL: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or code blocks.
+    Do not use <think> tags or any other non-JSON content in your response.
+    
+    Format your response as valid JSON with the following structure:
+    {
+      "risks": [
+        {
+          "title": "string",
+          "description": "string",
+          "category": "physical_security_vulnerabilities" | "environmental_hazards" | "natural_disasters" | "infrastructure_failure" | "personnel_safety_security" | "asset_damage_loss",
+          "impact": "very_low" | "low" | "medium" | "high" | "very_high",
+          "likelihood": "very_low" | "low" | "medium" | "high" | "very_high",
+          "source_type": "asset" | "personnel" | "incident" | "travel" | "pattern",
+          "source_id": "string (optional)",
+          "department": "string (optional)",
+          "confidence": number,
+          "explanation": "string",
+          "recommendations": ["string", "string", ...]
+        }
+      ],
+      "summary": {
+        "total_risks_detected": number,
+        "high_priority_risks": number,
+        "confidence_score": number
+      }
+    }
+  `;
+  
+  // Count items in each category
+  const assetCount = aggregateData.assets.length;
+  const personnelCount = aggregateData.personnel.length;
+  const incidentCount = aggregateData.incidents.length;
+  const travelPlanCount = aggregateData.travelPlans.length;
+  const riskCount = aggregateData.risks.length;
+  
+  // Prepare summary statistics for each category
+  const assetSummary = `
+    Assets (${assetCount} total):
+    - Secure: ${aggregateData.assets.filter((a: any) => a.status === 'secure').length}
+    - Alert: ${aggregateData.assets.filter((a: any) => a.status === 'alert').length}
+    - Maintenance: ${aggregateData.assets.filter((a: any) => a.status === 'maintenance').length}
+    - Offline: ${aggregateData.assets.filter((a: any) => a.status === 'offline').length}
+    - Compromised: ${aggregateData.assets.filter((a: any) => a.status === 'compromised').length}
+  `;
+  
+  const personnelSummary = `
+    Personnel (${personnelCount} total):
+    - Active: ${aggregateData.personnel.filter((p: any) => p.status === 'active').length}
+    - On-mission: ${aggregateData.personnel.filter((p: any) => p.status === 'on-mission').length}
+    - In-transit: ${aggregateData.personnel.filter((p: any) => p.status === 'in-transit').length}
+    - Off-duty: ${aggregateData.personnel.filter((p: any) => p.status === 'off-duty').length}
+    - Unavailable: ${aggregateData.personnel.filter((p: any) => p.status === 'unavailable').length}
+  `;
+  
+  const incidentSummary = `
+    Incidents (${incidentCount} total):
+    - Open: ${aggregateData.incidents.filter((i: any) => i.status === 'Open').length}
+    - In Progress: ${aggregateData.incidents.filter((i: any) => i.status === 'In Progress').length}
+    - Closed: ${aggregateData.incidents.filter((i: any) => i.status === 'Closed').length}
+    - Critical: ${aggregateData.incidents.filter((i: any) => i.severity === 'Critical').length}
+    - High: ${aggregateData.incidents.filter((i: any) => i.severity === 'High').length}
+    - Medium: ${aggregateData.incidents.filter((i: any) => i.severity === 'Medium').length}
+    - Low: ${aggregateData.incidents.filter((i: any) => i.severity === 'Low').length}
+  `;
+  
+  const travelPlanSummary = `
+    Travel Plans (${travelPlanCount} total):
+    - Pending: ${aggregateData.travelPlans.filter((t: any) => t.status === 'pending').length}
+    - Approved: ${aggregateData.travelPlans.filter((t: any) => t.status === 'approved').length}
+    - In-progress: ${aggregateData.travelPlans.filter((t: any) => t.status === 'in-progress').length}
+    - Completed: ${aggregateData.travelPlans.filter((t: any) => t.status === 'completed').length}
+    - Cancelled: ${aggregateData.travelPlans.filter((t: any) => t.status === 'cancelled').length}
+  `;
+  
+  const riskSummary = `
+    Existing Risks (${riskCount} total):
+    - Identified: ${aggregateData.risks.filter((r: any) => r.status === 'identified').length}
+    - Assessed: ${aggregateData.risks.filter((r: any) => r.status === 'assessed').length}
+    - Mitigated: ${aggregateData.risks.filter((r: any) => r.status === 'mitigated').length}
+    - Monitoring: ${aggregateData.risks.filter((r: any) => r.status === 'monitoring').length}
+    - Closed: ${aggregateData.risks.filter((r: any) => r.status === 'closed').length}
+    - AI-generated: ${aggregateData.risks.filter((r: any) => r.is_ai_generated).length}
+  `;
+  
+  // Prepare detailed examples of each category for pattern detection
+  // We'll limit to a few examples to keep the prompt size manageable
+  const assetExamples = aggregateData.assets.slice(0, 5).map((a: any, i: number) => 
+    `Asset ${i+1}: ${a.name} (${a.type}) - Status: ${a.status} - Location: ${(a.location as any)?.city || 'Unknown'}, ${(a.location as any)?.country || 'Unknown'}`
+  ).join('\n');
+  
+  const personnelExamples = aggregateData.personnel.slice(0, 5).map((p: any, i: number) => 
+    `Personnel ${i+1}: ${p.name} (${p.department}) - Status: ${p.status} - Location: ${(p.current_location as any)?.city || 'Unknown'}, ${(p.current_location as any)?.country || 'Unknown'}`
+  ).join('\n');
+  
+  const incidentExamples = aggregateData.incidents.slice(0, 5).map((i: any, idx: number) => 
+    `Incident ${idx+1}: ${i.title} - Severity: ${i.severity} - Status: ${i.status} - Date: ${new Date(i.date_time).toISOString().split('T')[0]}`
+  ).join('\n');
+  
+  const travelPlanExamples = aggregateData.travelPlans.slice(0, 5).map((t: any, i: number) => 
+    `Travel ${i+1}: ${t.traveler_name} to ${(t.destination as any)?.city || 'Unknown'}, ${(t.destination as any)?.country || 'Unknown'} - Status: ${t.status} - Dates: ${new Date(t.departure_date).toISOString().split('T')[0]} to ${new Date(t.return_date).toISOString().split('T')[0]}`
+  ).join('\n');
+  
+  const riskExamples = aggregateData.risks.slice(0, 5).map((r: any, i: number) => 
+    `Risk ${i+1}: ${r.title} - Category: ${r.category} - Impact: ${r.impact} - Likelihood: ${r.likelihood} - Score: ${r.risk_score} - Status: ${r.status}`
+  ).join('\n');
+  
+  const prompt = `
+    Please analyze the following organization data and identify potential new risks that should be added to the risk register.
+    Look for patterns, correlations, and potential issues that might not be explicitly captured in the existing risks.
+    
+    ORGANIZATION SUMMARY:
+    
+    ${assetSummary}
+    
+    ${personnelSummary}
+    
+    ${incidentSummary}
+    
+    ${travelPlanSummary}
+    
+    ${riskSummary}
+    
+    EXAMPLES FOR PATTERN DETECTION:
+    
+    ${assetExamples}
+    
+    ${personnelExamples}
+    
+    ${incidentExamples}
+    
+    ${travelPlanExamples}
+    
+    ${riskExamples}
+    
+    PATTERN DETECTION INSTRUCTIONS:
+    
+    1. Look for recurring incidents with similar characteristics
+    2. Identify personnel with multiple security incidents
+    3. Detect assets with maintenance or security issues
+    4. Find travel patterns to high-risk locations
+    5. Identify potential compliance issues
+    6. Look for gaps in existing risk coverage
+    7. Detect emerging threats based on recent incidents
+    8. Identify potential cascading failures or dependencies
+    
+    For each detected risk:
+    - Provide a clear title and detailed description
+    - Categorize appropriately
+    - Assess impact and likelihood
+    - Identify the source (asset, personnel, incident, travel, or pattern)
+    - Provide specific recommendations
+    - Include your confidence level (50-100)
+    
+    IMPORTANT: Only include risks that are not already covered in the existing risks.
+    Focus on quality over quantity - it's better to identify a few high-confidence risks than many speculative ones.
+    
+    REMEMBER: Respond with ONLY valid JSON. No explanatory text, markdown, or code blocks.
+  `;
+  
+  try {
+    const result = await callChutesAI(prompt, systemPrompt);
+    
+    // Log token usage
+    if (result.usage && result.usage.total_tokens) {
+      await logTokenUsage(organizationId, userId, 'detect_risks', result.usage.total_tokens);
+    }
+    
+    // Extract JSON from the response
+    let jsonContent;
+    try {
+      // First try direct parsing
+      jsonContent = JSON.parse(result.content);
+    } catch (parseError) {
+      console.error('JSON parse error in risk detection:', parseError);
+      console.error('Raw content:', result.content);
+      
+      // If direct parsing fails, try to extract JSON using regex
+      const extractedJson = extractJsonFromString(result.content);
+      jsonContent = JSON.parse(extractedJson);
+      console.log('Successfully extracted JSON from malformed response');
+    }
+    
+    // Add token usage to the response
+    jsonContent.token_usage = result.usage?.total_tokens || 0;
+    
+    return jsonContent;
+  } catch (error) {
+    console.error('Error in detectRisks:', error);
+    
+    // Return a fallback response
+    return {
+      risks: [],
+      summary: {
+        total_risks_detected: 0,
+        high_priority_risks: 0,
+        confidence_score: 0
+      },
+      token_usage: 0
+    };
   }
 }
 
@@ -857,7 +1092,7 @@ Deno.serve(async (req: Request) => {
     }
     
     // Process based on request type
-    let response: RiskScoringResponse;
+    let response: RiskScoringResponse | RiskDetectionResponse;
     
     switch (requestData.type) {
       case 'asset':
@@ -874,6 +1109,9 @@ Deno.serve(async (req: Request) => {
         break;
       case 'organization':
         response = await scoreOrganizationRisk(requestData.organizationId, requestData.userId || user.id, requestData.data);
+        break;
+      case 'detect_risks':
+        response = await detectRisks(requestData.data, requestData.organizationId, requestData.userId || user.id);
         break;
       default:
         // For other types, return a placeholder response

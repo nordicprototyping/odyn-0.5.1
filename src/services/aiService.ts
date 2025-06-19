@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabase';
 
 // Define types for risk scoring requests and responses
 export interface RiskScoringRequest {
-  type: 'asset' | 'personnel' | 'travel' | 'incident' | 'risk' | 'organization' | 'mitigation';
+  type: 'asset' | 'personnel' | 'travel' | 'incident' | 'risk' | 'organization' | 'mitigation' | 'detect_risks';
   data: any;
   organizationId: string;
   userId?: string;
@@ -19,6 +19,30 @@ export interface RiskScoringResponse {
     nextWeek?: number;
     nextMonth?: number;
   };
+}
+
+export interface DetectedRisk {
+  title: string;
+  description: string;
+  category: 'physical_security_vulnerabilities' | 'environmental_hazards' | 'natural_disasters' | 'infrastructure_failure' | 'personnel_safety_security' | 'asset_damage_loss';
+  impact: 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
+  likelihood: 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
+  source_type: 'asset' | 'personnel' | 'incident' | 'travel' | 'pattern';
+  source_id?: string;
+  department?: string;
+  confidence: number;
+  explanation: string;
+  recommendations: string[];
+}
+
+export interface RiskDetectionResponse {
+  risks: DetectedRisk[];
+  summary: {
+    total_risks_detected: number;
+    high_priority_risks: number;
+    confidence_score: number;
+  };
+  token_usage: number;
 }
 
 export interface TokenUsage {
@@ -110,6 +134,40 @@ class AIService {
       data: mitigationData,
       organizationId: mitigationData.organization_id,
     });
+  }
+
+  /**
+   * Detect new risks based on patterns in the data
+   */
+  async detectRisks(organizationId: string, aggregateData: any): Promise<RiskDetectionResponse> {
+    try {
+      // Get current user ID
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id;
+      
+      // Call the risk scoring function with the detect_risks type
+      const result = await this.callRiskScoringFunction({
+        type: 'detect_risks',
+        data: aggregateData,
+        organizationId,
+        userId
+      });
+      
+      return result as unknown as RiskDetectionResponse;
+    } catch (error) {
+      console.error('Error detecting risks:', error);
+      
+      // Return a fallback response
+      return {
+        risks: [],
+        summary: {
+          total_risks_detected: 0,
+          high_priority_risks: 0,
+          confidence_score: 0
+        },
+        token_usage: 0
+      };
+    }
   }
   
   /**
@@ -282,7 +340,7 @@ class AIService {
     } catch (error) {
       console.error('Error calling risk scoring function:', error);
       
-      // Return a fallback response in case of error
+      // Return a fallback response
       return {
         score: 50,
         confidence: 60,

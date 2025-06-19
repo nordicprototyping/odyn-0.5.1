@@ -73,16 +73,44 @@ export function useRisks() {
       setLoading(true);
       setError(null);
 
+      // Ensure is_ai_generated is set (default to false if not provided)
+      const riskWithAiFlag = {
+        ...riskData,
+        is_ai_generated: riskData.is_ai_generated || false,
+        ai_detection_date: riskData.is_ai_generated ? new Date().toISOString() : null
+      };
+
       const { data, error } = await supabase
         .from('risks')
-        .insert([riskData])
+        .insert([riskWithAiFlag])
         .select();
 
-      if (error) {
-        throw error;
-      }
-
+      if (error) throw error;
+      
       setRisks(prev => [...(data || []), ...prev]);
+
+      // Log the risk creation in audit logs
+      if (data?.[0]) {
+        await logAuditEvent(
+          riskData.is_ai_generated ? 'ai_risk_detected' : 'risk_created', 
+          data[0].id, 
+          {
+            risk_title: riskData.title,
+            risk_category: riskData.category,
+            is_ai_generated: riskData.is_ai_generated || false,
+            source_type: riskData.source_asset_id ? 'asset' : 
+                        riskData.source_personnel_id ? 'personnel' : 
+                        riskData.source_incident_id ? 'incident' : 
+                        riskData.source_travel_plan_id ? 'travel' : null,
+            source_id: riskData.source_asset_id || 
+                      riskData.source_personnel_id || 
+                      riskData.source_incident_id || 
+                      riskData.source_travel_plan_id || null,
+            ai_confidence: riskData.ai_confidence
+          }
+        );
+      }
+      
       return data?.[0] || null;
     } catch (err) {
       console.error('Error adding risk:', err);
@@ -104,9 +132,7 @@ export function useRisks() {
         .eq('id', id)
         .select();
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setRisks(prev => prev.map(risk => risk.id === id ? (data?.[0] || risk) : risk));
       return data?.[0] || null;
@@ -129,9 +155,7 @@ export function useRisks() {
         .delete()
         .eq('id', id);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setRisks(prev => prev.filter(risk => risk.id !== id));
     } catch (err) {

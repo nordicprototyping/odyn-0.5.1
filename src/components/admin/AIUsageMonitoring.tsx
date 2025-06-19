@@ -10,7 +10,11 @@ import {
   Loader2, 
   AlertCircle,
   Download,
-  RefreshCw
+  RefreshCw,
+  Send,
+  Clipboard,
+  Calendar,
+  Lightbulb
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
@@ -30,6 +34,13 @@ interface AISettings {
   enabled: boolean;
   model: string;
   tokenLimit: number;
+  riskDetection: {
+    enabled: boolean;
+    frequency: 'daily' | 'weekly' | 'monthly' | 'manual';
+    threshold: number;
+    autoApprove: boolean;
+    notifyOnDetection: boolean;
+  };
   settings: {
     temperature: number;
     contextWindow: number;
@@ -90,6 +101,13 @@ const AIUsageMonitoring: React.FC = () => {
         enabled: true,
         model: 'gpt-4',
         tokenLimit: 1000000,
+        riskDetection: {
+          enabled: false,
+          frequency: 'manual',
+          threshold: 70,
+          autoApprove: false,
+          notifyOnDetection: true
+        },
         settings: {
           temperature: 0.7,
           contextWindow: 8000,
@@ -158,6 +176,7 @@ const AIUsageMonitoring: React.FC = () => {
       case 'risk': return 'Risk Evaluation';
       case 'organization': return 'Organization Risk Scoring';
       case 'mitigation': return 'Mitigation Evaluation';
+      case 'detect_risks': return 'AI Risk Detection';
       default: return type.charAt(0).toUpperCase() + type.slice(1);
     }
   };
@@ -660,6 +679,160 @@ const AIUsageMonitoring: React.FC = () => {
                     <p className="mt-1 text-xs text-gray-500">
                       Maximum number of tokens your organization can use per month
                     </p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Risk Detection Settings */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <Lightbulb className="w-5 h-5 text-yellow-500" />
+                  <span>AI Risk Detection</span>
+                </h3>
+                <div className="space-y-4 bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">Enable Risk Detection</label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settingsForm.riskDetection.enabled}
+                        onChange={(e) => setSettingsForm({
+                          ...settingsForm,
+                          riskDetection: {
+                            ...settingsForm.riskDetection,
+                            enabled: e.target.checked
+                          }
+                        })}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settingsForm.riskDetection.enabled ? 'bg-yellow-500' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settingsForm.riskDetection.enabled ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Detection Frequency
+                    </label>
+                    <select
+                      value={settingsForm.riskDetection.frequency}
+                      onChange={(e) => setSettingsForm({
+                        ...settingsForm,
+                        riskDetection: {
+                          ...settingsForm.riskDetection,
+                          frequency: e.target.value as 'daily' | 'weekly' | 'monthly' | 'manual'
+                        }
+                      })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                      disabled={!settingsForm.riskDetection.enabled}
+                    >
+                      <option value="manual">Manual Only</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      How often the AI should automatically scan for new risks
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Confidence Threshold
+                    </label>
+                    <input
+                      type="range"
+                      min="50"
+                      max="95"
+                      step="5"
+                      value={settingsForm.riskDetection.threshold}
+                      onChange={(e) => setSettingsForm({
+                        ...settingsForm,
+                        riskDetection: {
+                          ...settingsForm.riskDetection,
+                          threshold: parseInt(e.target.value)
+                        }
+                      })}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                      disabled={!settingsForm.riskDetection.enabled}
+                    />
+                    <div className="flex justify-between mt-1">
+                      <span className="text-xs text-gray-500">More Risks (50%)</span>
+                      <span className="text-xs text-gray-500 font-medium">{settingsForm.riskDetection.threshold}%</span>
+                      <span className="text-xs text-gray-500">Higher Confidence (95%)</span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Only create risks when AI confidence is above this threshold
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">Auto-approve detected risks</label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settingsForm.riskDetection.autoApprove}
+                        onChange={(e) => setSettingsForm({
+                          ...settingsForm,
+                          riskDetection: {
+                            ...settingsForm.riskDetection,
+                            autoApprove: e.target.checked
+                          }
+                        })}
+                        disabled={!settingsForm.riskDetection.enabled}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settingsForm.riskDetection.autoApprove ? 'bg-yellow-500' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settingsForm.riskDetection.autoApprove ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">Notify on risk detection</label>
+                    <div className="relative inline-block w-12 h-6">
+                      <input
+                        type="checkbox"
+                        className="opacity-0 w-0 h-0"
+                        checked={settingsForm.riskDetection.notifyOnDetection}
+                        onChange={(e) => setSettingsForm({
+                          ...settingsForm,
+                          riskDetection: {
+                            ...settingsForm.riskDetection,
+                            notifyOnDetection: e.target.checked
+                          }
+                        })}
+                        disabled={!settingsForm.riskDetection.enabled}
+                      />
+                      <span 
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          settingsForm.riskDetection.notifyOnDetection ? 'bg-yellow-500' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span 
+                          className={`absolute h-4 w-4 left-1 bottom-1 bg-white rounded-full transition-transform ${
+                            settingsForm.riskDetection.notifyOnDetection ? 'transform translate-x-6' : ''
+                          }`}
+                        ></span>
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
