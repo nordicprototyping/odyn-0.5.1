@@ -136,7 +136,7 @@ const AIUsageMonitoring: React.FC = () => {
       if (userIds.size > 0) {
         const { data: profilesData, error: profilesError } = await supabase
           .from('user_profiles')
-          .select('user_id, full_name, email')
+          .select('user_id, full_name')
           .in('user_id', Array.from(userIds));
         
         if (profilesError) {
@@ -145,7 +145,7 @@ const AIUsageMonitoring: React.FC = () => {
           // Create a map of user_id to display name
           const profilesMap: Record<string, string> = {};
           (profilesData || []).forEach(profile => {
-            profilesMap[profile.user_id] = profile.full_name || profile.email || profile.user_id;
+            profilesMap[profile.user_id] = profile.full_name || profile.user_id;
           });
           setUserProfiles(profilesMap);
         }
