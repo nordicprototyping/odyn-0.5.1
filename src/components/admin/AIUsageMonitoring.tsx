@@ -14,7 +14,8 @@ import {
   Send,
   Clipboard,
   Calendar,
-  Lightbulb
+  Lightbulb,
+  X
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
