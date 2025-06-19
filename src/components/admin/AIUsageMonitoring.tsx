@@ -125,7 +125,7 @@ const AIUsageMonitoring: React.FC = () => {
       const logs = await aiService.getTokenUsageHistory(organizationId, days);
       
       // Set usage logs without fetching user emails (removed admin API call)
-      setUsageLogs(logs);
+      setUsageLogs(logs || []);
       
       // Fetch AI settings
       const { data: orgData, error: orgError } = await supabase
@@ -152,7 +152,7 @@ const AIUsageMonitoring: React.FC = () => {
   };
 
   const handleUpdateSettings = async () => {
-    if (!organization?.id || !settingsForm) return;
+    if (!organization?.id) return;
     
     try {
       setUpdatingSettings(true);
@@ -609,7 +609,7 @@ const AIUsageMonitoring: React.FC = () => {
       {/* AI Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
@@ -617,7 +617,7 @@ const AIUsageMonitoring: React.FC = () => {
                     <Brain className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">AI Settings</h2>
+                    <h2 className="text-xl font-bold text-gray-900">OdynSentinel AI Settings</h2>
                     <p className="text-gray-600">Configure AI behavior and token limits</p>
                   </div>
                 </div>
@@ -625,9 +625,7 @@ const AIUsageMonitoring: React.FC = () => {
                   onClick={() => setShowSettings(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <X className="w-6 h-6" />
                 </button>
               </div>
             </div>
@@ -854,59 +852,6 @@ const AIUsageMonitoring: React.FC = () => {
                         ></span>
                       </span>
                     </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Model Settings */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Model Settings</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Temperature
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      value={settingsForm.settings.temperature}
-                      onChange={(e) => setSettingsForm({
-                        ...settingsForm,
-                        settings: {
-                          ...settingsForm.settings,
-                          temperature: parseFloat(e.target.value)
-                        }
-                      })}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                    />
-                    <div className="flex justify-between mt-1">
-                      <span className="text-xs text-gray-500">More Predictable (0)</span>
-                      <span className="text-xs text-gray-500 font-medium">{settingsForm.settings.temperature}</span>
-                      <span className="text-xs text-gray-500">More Creative (1)</span>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Response Length
-                    </label>
-                    <select
-                      value={settingsForm.settings.responseLength}
-                      onChange={(e) => setSettingsForm({
-                        ...settingsForm,
-                        settings: {
-                          ...settingsForm.settings,
-                          responseLength: e.target.value
-                        }
-                      })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    >
-                      <option value="short">Short (Concise responses)</option>
-                      <option value="medium">Medium (Balanced detail)</option>
-                      <option value="long">Long (Comprehensive analysis)</option>
-                    </select>
                   </div>
                 </div>
               </div>
