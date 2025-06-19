@@ -33,6 +33,7 @@ import MitigationDisplay from './MitigationDisplay';
 import { AppliedMitigation } from '../types/mitigation';
 import ConfirmationModal from './common/ConfirmationModal';
 import { aiService, DetectedRisk } from '../services/aiService';
+import { supabase } from '../lib/supabase';
 
 type Risk = any;
 
