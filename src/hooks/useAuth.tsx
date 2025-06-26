@@ -157,6 +157,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Wrap the Supabase query in a nested try-catch to catch any errors specifically from the query
       try {
+        console.log('🔍 About to execute Supabase query for user profile:', { userId });
+        
+        // Log the query parameters
+        console.log('Query parameters:', {
+          table: 'user_profiles',
+          select: '*',
+          filter: { field: 'user_id', value: userId }
+        });
+        
         const result = await supabase
           .from('user_profiles')
           .select('*')
