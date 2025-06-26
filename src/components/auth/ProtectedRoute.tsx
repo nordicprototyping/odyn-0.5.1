@@ -19,7 +19,17 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const { user, profile, loading, hasPermission, hasRole } = useAuth();
   const location = useLocation();
 
+  console.log('🛡️ ProtectedRoute:', { 
+    path: location.pathname,
+    loading, 
+    userExists: !!user, 
+    profileExists: !!profile,
+    requiredPermission,
+    requiredRole
+  });
+
   if (loading) {
+    console.log('⏳ ProtectedRoute: Still loading auth state');
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -31,10 +41,12 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (!user) {
+    console.log('🚫 ProtectedRoute: No user, redirecting to login');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (!profile) {
+    console.log('⚠️ ProtectedRoute: User exists but no profile found');
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -46,6 +58,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Check if account is locked
   if (profile.account_locked_until && new Date(profile.account_locked_until) > new Date()) {
+    console.log('🔒 ProtectedRoute: Account is locked until', profile.account_locked_until);
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="max-w-md mx-auto text-center">
@@ -63,6 +76,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Check permission requirements
   if (requiredPermission && !hasPermission(requiredPermission)) {
+    console.log('🚫 ProtectedRoute: Missing required permission:', requiredPermission);
     if (fallback) {
       return <>{fallback}</>;
     }
@@ -83,6 +97,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Check role requirements
   if (requiredRole && !hasRole(requiredRole)) {
+    console.log('🚫 ProtectedRoute: Missing required role:', requiredRole);
     if (fallback) {
       return <>{fallback}</>;
     }
@@ -101,6 +116,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     );
   }
 
+  console.log('✅ ProtectedRoute: Access granted');
   return <>{children}</>;
 };
 
