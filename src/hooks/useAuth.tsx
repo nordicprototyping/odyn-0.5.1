@@ -155,34 +155,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log(`🔍 Fetching user profile (attempt ${retryCount + 1}/${maxRetries + 1})`, { userId });
 
     try {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
+      // Wrap the Supabase query in a nested try-catch to catch any errors specifically from the query
+      try {
+        const result = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+        
+        // Log the raw result to see exactly what's coming back
+        console.log('Raw Supabase query result:', result);
+        
+        const { data, error } = result;
 
-      console.log('Supabase fetchUserProfile data:', data); // Added logging
-      console.log('Supabase fetchUserProfile error:', error); // Added logging
+        console.log('Supabase fetchUserProfile data:', data); // Added logging
+        console.log('Supabase fetchUserProfile error:', error); // Added logging
 
-      if (error) {
-        // If no profile found and we haven't exceeded max retries, try again
-        if (error.code === 'PGRST116' && retryCount < maxRetries) {
-          console.log(`⚠️ Profile not found, retrying... (attempt ${retryCount + 1}/${maxRetries})`, { userId });
-          await wait(retryDelay);
-          return fetchUserProfile(userId, retryCount + 1);
+        if (error) {
+          // If no profile found and we haven't exceeded max retries, try again
+          if (error.code === 'PGRST116' && retryCount < maxRetries) {
+            console.log(`⚠️ Profile not found, retrying... (attempt ${retryCount + 1}/${maxRetries})`, { userId });
+            await wait(retryDelay);
+            return fetchUserProfile(userId, retryCount + 1);
+          }
+          
+          // If it's a different error or we've exceeded retries, log and return null
+          if (error.code !== 'PGRST116') {
+            console.error('❌ Error fetching user profile:', error);
+          } else {
+            console.warn('⚠️ Profile not found after maximum retries. User may need to complete signup process.');
+          }
+          return null;
         }
         
-        // If it's a different error or we've exceeded retries, log and return null
-        if (error.code !== 'PGRST116') {
-          console.error('❌ Error fetching user profile:', error);
-        } else {
-          console.warn('⚠️ Profile not found after maximum retries. User may need to complete signup process.');
-        }
-        return null;
+        console.log('✅ User profile found:', { profileId: data.id, role: data.role, orgId: data.organization_id });
+        return data;
+      } catch (queryError) {
+        // This will catch any errors thrown directly by the Supabase query
+        console.error('❌ Error in Supabase query:', queryError);
+        throw queryError; // Re-throw to be caught by the outer catch
       }
-      
-      console.log('✅ User profile found:', { profileId: data.id, role: data.role, orgId: data.organization_id });
-      return data;
     } catch (error) {
       console.error('❌ Unexpected error fetching user profile:', error);
       
