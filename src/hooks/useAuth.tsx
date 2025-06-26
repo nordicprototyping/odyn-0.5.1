@@ -185,10 +185,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else {
             console.warn('⚠️ Profile not found after maximum retries. User may need to complete signup process.');
           }
+          console.log('🔚 fetchUserProfile: Returning null due to error path.'); // Added this line
           return null;
         }
         
         console.log('✅ User profile found:', { profileId: data.id, role: data.role, orgId: data.organization_id });
+        console.log('✅ fetchUserProfile: Returning data successfully.'); // Added this line
         return data;
       } catch (queryError) {
         // This will catch any errors thrown directly by the Supabase query
@@ -204,6 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return fetchUserProfile(userId, retryCount + 1);
       }
       
+      console.log('🔚 fetchUserProfile: Returning null due to unexpected error after retries.'); // Added this line
       return null;
     }
   };
