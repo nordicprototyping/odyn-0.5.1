@@ -161,6 +161,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('user_id', userId)
         .single();
 
+      console.log('Supabase fetchUserProfile data:', data); // Added logging
+      console.log('Supabase fetchUserProfile error:', error); // Added logging
+
       if (error) {
         // If no profile found and we haven't exceeded max retries, try again
         if (error.code === 'PGRST116' && retryCount < maxRetries) {
