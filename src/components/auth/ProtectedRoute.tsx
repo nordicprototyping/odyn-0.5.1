@@ -25,11 +25,19 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     userExists: !!user, 
     profileExists: !!profile,
     requiredPermission,
-    requiredRole
+    requiredRole,
+    userEmail: user?.email,
+    profileRole: profile?.role,
+    profileOrgId: profile?.organization_id,
+    accountLocked: profile?.account_locked_until ? new Date(profile.account_locked_until) > new Date() : false
   });
 
   if (loading) {
-    console.log('⏳ ProtectedRoute: Still loading auth state');
+    console.log('⏳ ProtectedRoute: Still loading auth state', {
+      userId: user?.id,
+      hasProfile: !!profile,
+      path: location.pathname
+    });
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -41,12 +49,19 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (!user) {
-    console.log('🚫 ProtectedRoute: No user, redirecting to login');
+    console.log('🚫 ProtectedRoute: No user, redirecting to login', {
+      path: location.pathname,
+      redirectState: { from: location }
+    });
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (!profile) {
-    console.log('⚠️ ProtectedRoute: User exists but no profile found');
+    console.log('⚠️ ProtectedRoute: User exists but no profile found', {
+      userId: user.id,
+      email: user.email,
+      path: location.pathname
+    });
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -58,7 +73,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Check if account is locked
   if (profile.account_locked_until && new Date(profile.account_locked_until) > new Date()) {
-    console.log('🔒 ProtectedRoute: Account is locked until', profile.account_locked_until);
+    console.log('🔒 ProtectedRoute: Account is locked until', {
+      lockedUntil: profile.account_locked_until,
+      userId: user.id,
+      path: location.pathname
+    });
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="max-w-md mx-auto text-center">
@@ -76,7 +95,12 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Check permission requirements
   if (requiredPermission && !hasPermission(requiredPermission)) {
-    console.log('🚫 ProtectedRoute: Missing required permission:', requiredPermission);
+    console.log('🚫 ProtectedRoute: Missing required permission:', {
+      requiredPermission,
+      userRole: profile.role,
+      userId: user.id,
+      path: location.pathname
+    });
     if (fallback) {
       return <>{fallback}</>;
     }
@@ -97,7 +121,12 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Check role requirements
   if (requiredRole && !hasRole(requiredRole)) {
-    console.log('🚫 ProtectedRoute: Missing required role:', requiredRole);
+    console.log('🚫 ProtectedRoute: Missing required role:', {
+      requiredRole,
+      userRole: profile.role,
+      userId: user.id,
+      path: location.pathname
+    });
     if (fallback) {
       return <>{fallback}</>;
     }
@@ -116,7 +145,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     );
   }
 
-  console.log('✅ ProtectedRoute: Access granted');
+  console.log('✅ ProtectedRoute: Access granted', {
+    userId: user.id,
+    role: profile.role,
+    path: location.pathname
+  });
   return <>{children}</>;
 };
 

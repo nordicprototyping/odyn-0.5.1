@@ -95,31 +95,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       
       try {
+        console.log('🔄 Setting session and user state');
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
+          console.log('👤 User found in session:', { userId: session.user.id, email: session.user.email });
           console.log('🔍 Fetching user profile for:', session.user.id);
           const fetchedProfile = await fetchUserProfile(session.user.id);
-          console.log('👤 Profile fetched:', { success: !!fetchedProfile, profileData: fetchedProfile });
+          console.log('👤 Profile fetched:', { 
+            success: !!fetchedProfile, 
+            profileId: fetchedProfile?.id,
+            role: fetchedProfile?.role,
+            orgId: fetchedProfile?.organization_id
+          });
           setProfile(fetchedProfile);
           
           if (fetchedProfile?.organization_id) {
             console.log('🏢 Fetching organization:', fetchedProfile.organization_id);
             const fetchedOrganization = await fetchOrganization(fetchedProfile.organization_id);
-            console.log('🏢 Organization fetched:', { success: !!fetchedOrganization, name: fetchedOrganization?.name });
+            console.log('🏢 Organization fetched:', { 
+              success: !!fetchedOrganization, 
+              name: fetchedOrganization?.name,
+              planType: fetchedOrganization?.plan_type
+            });
             setOrganization(fetchedOrganization);
           } else {
-            console.log('⚠️ No organization_id in profile');
+            console.log('⚠️ No organization_id in profile, cannot fetch organization');
           }
           
           // Log authentication events only after profile is loaded
           if (event && fetchedProfile?.organization_id) {
+            console.log('📝 Logging audit event:', { event, userId: session.user.id, orgId: fetchedProfile.organization_id });
             await logAuditEvent(event, session.user.id, fetchedProfile.organization_id);
           }
         } else {
           // Log logout before clearing profile
           if (event === 'SIGNED_OUT' && user?.id && profile?.organization_id) {
+            console.log('📝 Logging logout event before clearing profile');
             await logAuditEvent('logout', user.id, profile.organization_id);
           }
           console.log('🚫 No user in session, clearing profile and organization');
@@ -198,7 +211,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return null;
         }
         
-        console.log('✅ User profile found:', { profileId: data.id, role: data.role, orgId: data.organization_id });
+        console.log('✅ User profile found:', { 
+          profileId: data.id, 
+          role: data.role, 
+          orgId: data.organization_id,
+          fullName: data.full_name,
+          department: data.department
+        });
         console.log('✅ fetchUserProfile: Returning data successfully.'); // Added this line
         return data;
       } catch (queryError) {
@@ -211,6 +230,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Retry on unexpected errors too, but only a few times
       if (retryCount < 3) {
+        console.log(`🔄 Retrying after unexpected error (attempt ${retryCount + 1}/3)`);
         await wait(retryDelay);
         return fetchUserProfile(userId, retryCount + 1);
       }
@@ -223,6 +243,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchOrganization = async (organizationId: string): Promise<Organization | null> => {
     console.log('🔍 Fetching organization:', { organizationId });
     try {
+      console.log('🔍 Executing Supabase query for organization');
       const { data, error } = await supabase
         .from('organizations')
         .select('*')
@@ -234,7 +255,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return null;
       }
       
-      console.log('✅ Organization found:', { name: data.name, planType: data.plan_type });
+      console.log('✅ Organization found:', { 
+        id: data.id,
+        name: data.name, 
+        planType: data.plan_type,
+        createdAt: data.created_at
+      });
       return data;
     } catch (error) {
       console.error('❌ Unexpected error fetching organization:', error);
@@ -252,6 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     try {
+      console.log('📝 Logging audit event:', { action, userId, orgId });
       const { error } = await supabase.from('audit_logs').insert({
         user_id: userId || null,
         organization_id: orgId,
@@ -263,6 +290,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         console.error('❌ Error logging audit event:', error);
+      } else {
+        console.log('✅ Audit event logged successfully');
       }
     } catch (error) {
       console.error('❌ Unexpected error logging audit event:', error);
@@ -271,10 +300,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const getClientIP = async (): Promise<string | null> => {
     try {
+      console.log('🔍 Attempting to get client IP');
       const response = await fetch('https://api.ipify.org?format=json');
       const data = await response.json();
+      console.log('✅ Client IP retrieved:', data.ip);
       return data.ip;
-    } catch {
+    } catch (error) {
+      console.error('❌ Error getting client IP:', error);
       return null;
     }
   };
@@ -293,8 +325,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: error.message };
       }
 
-      console.log('✅ Sign in successful:', { userId: data.user?.id });
+      console.log('✅ Sign in successful:', { userId: data.user?.id, email: data.user?.email });
       if (data.user) {
+        console.log('🔄 Resetting failed login attempts on successful login');
         // Reset failed login attempts on successful login
         await supabase
           .from('user_profiles')
@@ -306,6 +339,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .eq('user_id', data.user.id);
 
         // Check if 2FA is enabled
+        console.log('🔍 Checking if 2FA is enabled for user');
         const { data: profile } = await supabase
           .from('user_profiles')
           .select('two_factor_enabled')
@@ -317,6 +351,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Sign out temporarily until 2FA is verified
           await supabase.auth.signOut();
           return { requiresTwoFactor: true };
+        } else {
+          console.log('🔓 2FA is not enabled, proceeding with login');
         }
       }
 
@@ -345,7 +381,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: error.message };
       }
 
-      console.log('✅ Sign up successful:', { userId: data.user?.id });
+      console.log('✅ Sign up successful:', { 
+        userId: data.user?.id, 
+        email: data.user?.email,
+        fullName: data.user?.user_metadata?.full_name
+      });
       // Note: We can't log signup events to audit_logs here because the user profile
       // and organization haven't been created yet. This will be handled by the
       // database trigger or signup completion process.
@@ -359,7 +399,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     console.log('🚪 Signing out');
+    if (user && profile?.organization_id) {
+      console.log('📝 Logging sign out event before actual sign out');
+      await logAuditEvent('logout', user.id, profile.organization_id);
+    }
     await supabase.auth.signOut();
+    console.log('✅ Sign out completed');
   };
 
   const resetPassword = async (email: string) => {
@@ -431,6 +476,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         Math.random().toString(36).substring(2, 8).toUpperCase()
       );
 
+      console.log('🔄 Updating user profile with 2FA settings');
       await supabase
         .from('user_profiles')
         .update({
@@ -456,6 +502,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('🔒 Disabling 2FA');
       // Verify password first
+      console.log('🔍 Verifying password before disabling 2FA');
       const { error: authError } = await supabase.auth.signInWithPassword({
         email: user?.email || '',
         password
@@ -466,6 +513,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: 'Invalid password' };
       }
 
+      console.log('🔄 Updating user profile to disable 2FA');
       await supabase
         .from('user_profiles')
         .update({
@@ -492,18 +540,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('🏢 Joining organization with code:', invitationCode);
       if (!user) {
+        console.warn('❌ Cannot join organization: user not logged in');
         return { error: 'You must be logged in to join an organization' };
       }
 
       // Get the current session
+      console.log('🔍 Getting current session for API call');
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.access_token;
       
       if (!accessToken) {
+        console.warn('❌ No access token available for API call');
         return { error: 'No access token available' };
       }
 
       // Call the accept-invitation edge function
+      console.log('🔄 Calling accept-invitation edge function');
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/accept-invitation`, {
         method: 'POST',
         headers: {
@@ -552,20 +604,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🔄 Refreshing user profile:', user.id);
       setLoading(true);
       try {
+        console.log('🔍 Fetching updated profile data');
         const fetchedProfile = await fetchUserProfile(user.id);
-        console.log('👤 Profile refreshed:', { success: !!fetchedProfile, profileData: fetchedProfile });
+        console.log('👤 Profile refreshed:', { 
+          success: !!fetchedProfile, 
+          profileId: fetchedProfile?.id,
+          role: fetchedProfile?.role,
+          orgId: fetchedProfile?.organization_id
+        });
         setProfile(fetchedProfile);
         
         if (fetchedProfile?.organization_id) {
           console.log('🏢 Refreshing organization:', fetchedProfile.organization_id);
           const fetchedOrganization = await fetchOrganization(fetchedProfile.organization_id);
-          console.log('🏢 Organization refreshed:', { success: !!fetchedOrganization, name: fetchedOrganization?.name });
+          console.log('🏢 Organization refreshed:', { 
+            success: !!fetchedOrganization, 
+            name: fetchedOrganization?.name,
+            planType: fetchedOrganization?.plan_type
+          });
           setOrganization(fetchedOrganization);
+        } else {
+          console.log('⚠️ No organization_id in refreshed profile');
         }
+      } catch (error) {
+        console.error('❌ Error refreshing profile:', error);
       } finally {
         console.log('✅ Profile refresh complete, setting loading to false');
         setLoading(false);
       }
+    } else {
+      console.warn('⚠️ Cannot refresh profile: no user logged in');
     }
   };
 
