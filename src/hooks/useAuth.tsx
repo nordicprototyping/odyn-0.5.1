@@ -128,8 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Log authentication events only after profile is loaded
           if (event && fetchedProfile?.organization_id) {
             console.log('📝 Logging audit event:', { event, userId: session.user.id, orgId: fetchedProfile.organization_id });
-            // Temporarily commented out to isolate potential issues
-            // await logAuditEvent(event, session.user.id, fetchedProfile.organization_id);
+            await logAuditEvent(event, session.user.id, fetchedProfile.organization_id);
           }
         } else {
           // Log logout before clearing profile
@@ -181,14 +180,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           filter: { field: 'user_id', value: userId }
         });
         
-        const result = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('user_id', userId)
-          .single();
-        
-        // Log the raw result to see exactly what's coming back
-        console.log('Raw Supabase query result:', result);
+        // Execute the query with explicit error handling
+        let result;
+        try {
+          result = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('user_id', userId)
+            .single();
+          
+          // Log the raw result to see exactly what's coming back
+          console.log('Raw Supabase query result:', result);
+        } catch (queryExecutionError) {
+          console.error('❌ Error executing Supabase query:', queryExecutionError);
+          throw queryExecutionError;
+        }
         
         const { data, error } = result;
 
@@ -210,6 +216,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.warn('⚠️ Profile not found after maximum retries. User may need to complete signup process.');
           }
           console.log('🔚 fetchUserProfile: Returning null due to error path.'); // Added this line
+          return null;
+        }
+        
+        // If we get here, we have a successful response but data might still be null
+        if (!data) {
+          console.warn('⚠️ No profile data found for user:', userId);
           return null;
         }
         
@@ -246,11 +258,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔍 Fetching organization:', { organizationId });
     try {
       console.log('🔍 Executing Supabase query for organization');
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('id', organizationId)
-        .single();
+      let result;
+      try {
+        result = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('id', organizationId)
+          .single();
+        
+        console.log('Raw organization query result:', result);
+      } catch (queryError) {
+        console.error('❌ Error executing organization query:', queryError);
+        throw queryError;
+      }
+
+      const { data, error } = result;
+      
+      console.log('Organization query data:', data);
+      console.log('Organization query error:', error);
 
       if (error) {
         console.error('❌ Error fetching organization:', error);
