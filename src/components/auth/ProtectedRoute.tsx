@@ -32,21 +32,22 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     accountLocked: profile?.account_locked_until ? new Date(profile.account_locked_until) > new Date() : false
   });
 
-  if (loading) {
-    console.log('⏳ ProtectedRoute: Still loading auth state', {
-      userId: user?.id,
-      hasProfile: !!profile,
-      path: location.pathname
-    });
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  // TEMPORARY BYPASS: Skip loading check to allow access even if auth state is still loading
+  // if (loading) {
+  //   console.log('⏳ ProtectedRoute: Still loading auth state', {
+  //     userId: user?.id,
+  //     hasProfile: !!profile,
+  //     path: location.pathname
+  //   });
+  //   return (
+  //     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+  //       <div className="text-center">
+  //         <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
+  //         <p className="text-gray-600">Loading...</p>
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
   if (!user) {
     console.log('🚫 ProtectedRoute: No user, redirecting to login', {
@@ -57,18 +58,14 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (!profile) {
-    console.log('⚠️ ProtectedRoute: User exists but no profile found', {
+    console.warn('⚠️ ProtectedRoute: User exists but no profile found. Allowing access temporarily for debugging.', {
       userId: user.id,
       email: user.email,
       path: location.pathname
     });
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600">Setting up your profile...</p>
-        </div>
-      </div>
-    );
+    // TEMPORARY BYPASS: Allow access even without a profile for debugging purposes.
+    // Components relying on 'profile' will need to handle null or undefined.
+    return <>{children}</>;
   }
 
   // Check if account is locked
