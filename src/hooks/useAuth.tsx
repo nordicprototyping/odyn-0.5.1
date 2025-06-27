@@ -110,6 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             orgId: fetchedProfile?.organization_id
           });
           setProfile(fetchedProfile);
+          console.log('Profile set:', { fetchedProfile, currentUser: session?.user });
           
           if (fetchedProfile?.organization_id) {
             console.log('🏢 Fetching organization:', fetchedProfile.organization_id);
@@ -127,7 +128,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Log authentication events only after profile is loaded
           if (event && fetchedProfile?.organization_id) {
             console.log('📝 Logging audit event:', { event, userId: session.user.id, orgId: fetchedProfile.organization_id });
-            await logAuditEvent(event, session.user.id, fetchedProfile.organization_id);
+            // Temporarily commented out to isolate potential issues
+            // await logAuditEvent(event, session.user.id, fetchedProfile.organization_id);
           }
         } else {
           // Log logout before clearing profile
