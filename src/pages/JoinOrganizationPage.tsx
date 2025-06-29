@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Building, Key, CheckCircle, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { supabase } from '../lib/supabase';
 
 const JoinOrganizationPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -14,7 +13,7 @@ const JoinOrganizationPage: React.FC = () => {
   const [invitationDetails, setInvitationDetails] = useState<any>(null);
   const [isCheckingCode, setIsCheckingCode] = useState(false);
 
-  const { user, refreshProfile } = useAuth();
+  const { user, joinOrganization, getInvitationDetails, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
   // Check invitation code from URL when component mounts
@@ -31,36 +30,15 @@ const JoinOrganizationPage: React.FC = () => {
       setIsCheckingCode(true);
       setError(null);
       
-      const { data, error } = await supabase
-        .from('organization_invitations')
-        .select('id, organization_id, invited_email, role, status, expires_at, organizations(name)')
-        .eq('invitation_code', code)
-        .single();
-
-      if (error) {
-        throw new Error('Invalid invitation code');
-      }
-
-      if (data.status !== 'pending') {
-        throw new Error(`This invitation is ${data.status}`);
-      }
-
-      if (new Date(data.expires_at) < new Date()) {
-        throw new Error('This invitation has expired');
-      }
-
-      // If user is logged in, check if email matches
-      if (user && user.email !== data.invited_email) {
-        throw new Error(`This invitation was sent to ${data.invited_email}. Please log in with that email address.`);
+      const result = await getInvitationDetails(code);
+      
+      if (result.error) {
+        throw new Error(result.error);
       }
 
       setInvitationDetails({
-        id: data.id,
-        organizationId: data.organization_id,
-        email: data.invited_email,
-        role: data.role,
-        expiresAt: data.expires_at,
-        organizationName: data.organizations?.name
+        organizationId: result.organizationId,
+        organizationName: result.organizationName,
       });
 
     } catch (err) {
@@ -83,37 +61,14 @@ const JoinOrganizationPage: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      // Get the current session
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token;
+      const result = await joinOrganization(invitationCode);
       
-      if (!accessToken) {
-        throw new Error('No access token available');
-      }
-
-      // Call the accept-invitation edge function
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/accept-invitation`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
-          invitationCode
-        })
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to accept invitation');
+      if (result.error) {
+        throw new Error(result.error);
       }
 
       setOrganization(result.organization);
-      setSuccess(`You have successfully joined ${result.organization.name}`);
-      
-      // Refresh user profile to get updated organization
-      await refreshProfile();
+      setSuccess(`You have successfully joined ${result.organization?.name}`);
       
       // Redirect to dashboard after 2 seconds
       setTimeout(() => {
@@ -194,18 +149,6 @@ const JoinOrganizationPage: React.FC = () => {
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Organization:</span>
                       <span className="text-sm font-medium text-gray-900">{invitationDetails.organizationName}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Email:</span>
-                      <span className="text-sm font-medium text-gray-900">{invitationDetails.email}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Role:</span>
-                      <span className="text-sm font-medium text-gray-900 capitalize">{invitationDetails.role.replace('_', ' ')}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Expires:</span>
-                      <span className="text-sm font-medium text-gray-900">{new Date(invitationDetails.expiresAt).toLocaleDateString()}</span>
                     </div>
                   </div>
                 </div>

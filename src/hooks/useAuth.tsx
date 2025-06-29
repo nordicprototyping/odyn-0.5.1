@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, Database } from '../lib/supabase';
+import * as authService from '../services/authService';
 
 type UserProfile = Database['public']['Tables']['user_profiles']['Row'];
 type Organization = Database['public']['Tables']['organizations']['Row'];
@@ -111,7 +112,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             orgId: fetchedProfile?.organization_id
           });
           setProfile(fetchedProfile);
-          console.log('Profile set:', { fetchedProfile, currentUser: session?.user });
           
           if (fetchedProfile?.organization_id) {
             console.log('🏢 Fetching organization:', fetchedProfile.organization_id);
@@ -307,12 +307,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     try {
       console.log('📝 Logging audit event:', { action, userId, orgId });
+      const clientIP = await authService.getClientIP();
+      
       const { error } = await supabase.from('audit_logs').insert({
         user_id: userId || null,
         organization_id: orgId,
         action,
         details,
-        ip_address: await getClientIP(),
+        ip_address: clientIP,
         user_agent: navigator.userAgent
       });
 
@@ -326,385 +328,231 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const getClientIP = async (): Promise<string | null> => {
-    try {
-      console.log('🔍 Attempting to get client IP');
-      const response = await fetch('https://api.ipify.org?format=json');
-      const data = await response.json();
-      console.log('✅ Client IP retrieved:', data.ip);
-      return data.ip;
-    } catch (error) {
-      console.error('❌ Error getting client IP:', error);
-      return null;
-    }
-  };
-
   const signIn = async (email: string, password: string, rememberMe = false) => {
-    try {
-      console.log('🔑 Attempting sign in:', { email, rememberMe });
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        // Don't log failed login attempts to audit_logs since we don't have organization context yet
-        console.warn('❌ Login failed:', error.message);
-        return { error: error.message };
-      }
-
-      console.log('✅ Sign in successful:', { userId: data.user?.id, email: data.user?.email });
-      if (data.user) {
-        console.log('🔄 Resetting failed login attempts on successful login');
-        // Reset failed login attempts on successful login
-        await supabase
-          .from('user_profiles')
-          .update({
-            failed_login_attempts: 0,
-            account_locked_until: null,
-            last_login: new Date().toISOString()
-          })
-          .eq('user_id', data.user.id);
-
-        // Check if 2FA is enabled
-        console.log('🔍 Checking if 2FA is enabled for user');
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('two_factor_enabled')
-          .eq('user_id', data.user.id)
-          .single();
-
-        if (profile?.two_factor_enabled) {
-          console.log('🔒 2FA is enabled, signing out temporarily');
-          // Sign out temporarily until 2FA is verified
-          await supabase.auth.signOut();
-          return { requiresTwoFactor: true };
-        } else {
-          console.log('🔓 2FA is not enabled, proceeding with login');
-        }
-      }
-
-      return {};
-    } catch (error) {
-      console.error('❌ Unexpected error during sign in:', error);
-      return { error: 'An unexpected error occurred' };
+    console.log('🔑 useAuth: Attempting sign in:', { email, rememberMe });
+    
+    const { data, error } = await authService.signInWithPassword(email, password);
+    
+    if (error) {
+      console.warn('❌ useAuth: Login failed:', error);
+      return { error };
     }
-  };
-
-  const getInvitationDetails = async (invitationCode: string) => {
-    try {
-      console.log('🔍 Getting invitation details for code:', invitationCode);
-      const { data, error } = await supabase
-        .from('organization_invitations')
-        .select(`
-          organization_id,
-          organizations!inner(name)
-        `)
-        .eq('invitation_code', invitationCode)
-        .eq('status', 'pending')
-        .gt('expires_at', new Date().toISOString())
-        .single();
-
-      if (error) {
-        console.warn('❌ Error fetching invitation details:', error.message);
-        return { error: 'Invalid or expired invitation code' };
-      }
-
-      console.log('✅ Invitation details found:', { 
-        organizationId: data.organization_id,
-        organizationName: data.organizations.name
-      });
-
-      return {
-        organizationId: data.organization_id,
-        organizationName: data.organizations.name
-      };
-    } catch (error) {
-      console.error('❌ Unexpected error fetching invitation details:', error);
-      return { error: 'An unexpected error occurred' };
+    
+    if (data?.requiresTwoFactor) {
+      console.log('🔒 useAuth: 2FA required, returning to UI');
+      return { requiresTwoFactor: true };
     }
-  };
-
-  const createOrganizationForUser = async (fullName: string): Promise<string | null> => {
-    try {
-      console.log('🏢 Creating new organization for user:', { fullName });
-      
-      // Extract organization name from user's full name or email
-      const organizationName = `${fullName}'s Organization`;
-      
-      const { data, error } = await supabase
-        .from('organizations')
-        .insert({
-          name: organizationName,
-          plan_type: 'starter',
-          settings: {}
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ Error creating organization:', error);
-        return null;
-      }
-
-      console.log('✅ Organization created successfully:', { 
-        id: data.id, 
-        name: data.name 
-      });
-      return data.id;
-    } catch (error) {
-      console.error('❌ Unexpected error creating organization:', error);
-      return null;
-    }
+    
+    console.log('✅ useAuth: Sign in successful');
+    return {};
   };
 
   const signUp = async (email: string, password: string, fullName: string, organizationId?: string) => {
-    try {
-      console.log('📝 Attempting sign up:', { email, fullName, hasOrganizationId: !!organizationId });
+    console.log('📝 useAuth: Attempting sign up:', { email, fullName, hasOrganizationId: !!organizationId });
+    
+    let finalOrganizationId = organizationId;
+    
+    // If no organizationId provided, create a new organization
+    if (!organizationId) {
+      console.log('🏢 useAuth: No organization ID provided, creating new organization');
+      const { data: orgId, error: orgError } = await authService.createOrganizationForUser(fullName);
       
-      let finalOrganizationId = organizationId;
-      let userRole: 'admin' | 'user' = 'user';
-
-      // If no organizationId provided, create a new organization
-      if (!organizationId) {
-        console.log('🏢 No organization ID provided, creating new organization');
-        finalOrganizationId = await createOrganizationForUser(fullName);
-        
-        if (!finalOrganizationId) {
-          console.error('❌ Failed to create organization for user');
-          return { error: 'Failed to create organization. Please try again.' };
-        }
-        
-        // User becomes admin of their own organization
-        userRole = 'admin';
-        console.log('✅ New organization created, user will be admin');
+      if (orgError || !orgId) {
+        console.error('❌ useAuth: Failed to create organization for user');
+        return { error: 'Failed to create organization. Please try again.' };
       }
-
-      // Prepare user metadata
-      const userData: any = {
-        full_name: fullName,
-        organization_id: finalOrganizationId,
-        role: userRole
-      };
-
-      console.log('📝 Signing up user with metadata:', userData);
-
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: userData
-        }
-      });
-
-      if (error) {
-        console.warn('❌ Signup failed:', error.message);
-        return { error: error.message };
-      }
-
-      console.log('✅ Sign up successful:', { 
-        userId: data.user?.id, 
-        email: data.user?.email,
-        fullName: data.user?.user_metadata?.full_name,
-        organizationId: data.user?.user_metadata?.organization_id,
-        role: data.user?.user_metadata?.role
-      });
-
-      return {};
-    } catch (error) {
-      console.error('❌ Unexpected error during sign up:', error);
-      return { error: 'An unexpected error occurred' };
+      
+      finalOrganizationId = orgId;
+      console.log('✅ useAuth: New organization created, user will be admin');
     }
+    
+    const { data, error } = await authService.signUp(email, password, fullName, finalOrganizationId);
+    
+    if (error) {
+      console.warn('❌ useAuth: Signup failed:', error);
+      return { error };
+    }
+    
+    console.log('✅ useAuth: Sign up successful');
+    return {};
   };
 
   const signOut = async () => {
-    console.log('🚪 Signing out');
+    console.log('🚪 useAuth: Signing out');
+    
     if (user && profile?.organization_id) {
-      console.log('📝 Logging sign out event before actual sign out');
+      console.log('📝 useAuth: Logging sign out event before actual sign out');
       await logAuditEvent('logout', user.id, profile.organization_id);
     }
-    await supabase.auth.signOut();
-    console.log('✅ Sign out completed');
+    
+    await authService.signOut();
+    console.log('✅ useAuth: Sign out completed');
   };
 
   const resetPassword = async (email: string) => {
-    try {
-      console.log('🔄 Requesting password reset:', { email });
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`
-      });
-
-      if (error) {
-        console.warn('❌ Password reset request failed:', error.message);
-        return { error: error.message };
-      }
-
-      console.log('✅ Password reset email sent');
-      // Don't log password reset requests since we don't have user/org context
-      return {};
-    } catch (error) {
-      console.error('❌ Unexpected error during password reset:', error);
-      return { error: 'An unexpected error occurred' };
+    console.log('🔄 useAuth: Requesting password reset:', { email });
+    
+    const { error } = await authService.resetPassword(email);
+    
+    if (error) {
+      console.warn('❌ useAuth: Password reset request failed:', error);
+      return { error };
     }
+    
+    console.log('✅ useAuth: Password reset email sent');
+    return {};
   };
 
   const updatePassword = async (password: string) => {
-    try {
-      console.log('🔄 Updating password');
-      const { error } = await supabase.auth.updateUser({ password });
-
-      if (error) {
-        console.warn('❌ Password update failed:', error.message);
-        return { error: error.message };
-      }
-
-      console.log('✅ Password updated successfully');
-      if (profile?.organization_id) {
-        await logAuditEvent('password_updated', user?.id, profile.organization_id);
-      }
-      return {};
-    } catch (error) {
-      console.error('❌ Unexpected error during password update:', error);
-      return { error: 'An unexpected error occurred' };
+    console.log('🔄 useAuth: Updating password');
+    
+    const { error } = await authService.updatePassword(password);
+    
+    if (error) {
+      console.warn('❌ useAuth: Password update failed:', error);
+      return { error };
     }
+    
+    console.log('✅ useAuth: Password updated successfully');
+    
+    if (profile?.organization_id) {
+      await logAuditEvent('password_updated', user?.id, profile.organization_id);
+    }
+    
+    return {};
   };
 
   const verifyTwoFactor = async (token: string) => {
-    // Implementation would verify TOTP token
-    // This is a simplified version
-    console.log('🔒 Verifying 2FA token');
-    return { error: undefined };
+    console.log('🔒 useAuth: Verifying 2FA token');
+    
+    const { error } = await authService.verifyTwoFactor(token);
+    
+    if (error) {
+      console.warn('❌ useAuth: 2FA verification failed:', error);
+      return { error };
+    }
+    
+    console.log('✅ useAuth: 2FA verification successful');
+    return {};
   };
 
   const setupTwoFactor = async () => {
-    // Implementation would generate TOTP secret and QR code
-    // This is a simplified version
-    console.log('🔒 Setting up 2FA');
-    const secret = 'JBSWY3DPEHPK3PXP'; // Example secret
-    const qrCode = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
-    const backupCodes = ['123456', '789012', '345678', '901234', '567890'];
+    console.log('🔒 useAuth: Setting up 2FA');
     
-    return { secret, qrCode, backupCodes };
+    const { data, error } = await authService.setupTwoFactor();
+    
+    if (error || !data) {
+      console.error('❌ useAuth: Error setting up 2FA:', error);
+      throw new Error('Failed to set up two-factor authentication');
+    }
+    
+    console.log('✅ useAuth: 2FA setup successful');
+    return data;
   };
 
   const enableTwoFactor = async (token: string) => {
-    try {
-      console.log('🔒 Enabling 2FA');
-      // Verify token first (implementation needed)
-      
-      const backupCodes = Array.from({ length: 10 }, () => 
-        Math.random().toString(36).substring(2, 8).toUpperCase()
-      );
-
-      console.log('🔄 Updating user profile with 2FA settings');
-      await supabase
-        .from('user_profiles')
-        .update({
-          two_factor_enabled: true,
-          backup_codes: backupCodes
-        })
-        .eq('user_id', user?.id);
-
-      console.log('✅ 2FA enabled successfully');
-      if (profile?.organization_id) {
-        await logAuditEvent('two_factor_enabled', user?.id, profile.organization_id);
-      }
-      await refreshProfile();
-      
-      return { backupCodes };
-    } catch (error) {
-      console.error('❌ Error enabling 2FA:', error);
-      return { error: 'Failed to enable two-factor authentication' };
+    console.log('🔒 useAuth: Enabling 2FA');
+    
+    if (!user) {
+      console.warn('❌ useAuth: Cannot enable 2FA: no user logged in');
+      return { error: 'You must be logged in to enable 2FA' };
     }
+    
+    const { data, error } = await authService.enableTwoFactor(user.id, token);
+    
+    if (error || !data) {
+      console.error('❌ useAuth: Error enabling 2FA:', error);
+      return { error: error || 'Failed to enable two-factor authentication' };
+    }
+    
+    console.log('✅ useAuth: 2FA enabled successfully');
+    
+    if (profile?.organization_id) {
+      await logAuditEvent('two_factor_enabled', user.id, profile.organization_id);
+    }
+    
+    await refreshProfile();
+    
+    return { backupCodes: data.backupCodes };
   };
 
   const disableTwoFactor = async (password: string) => {
-    try {
-      console.log('🔒 Disabling 2FA');
-      // Verify password first
-      console.log('🔍 Verifying password before disabling 2FA');
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: user?.email || '',
-        password
-      });
-
-      if (authError) {
-        console.warn('❌ Invalid password when disabling 2FA');
-        return { error: 'Invalid password' };
-      }
-
-      console.log('🔄 Updating user profile to disable 2FA');
-      await supabase
-        .from('user_profiles')
-        .update({
-          two_factor_enabled: false,
-          two_factor_secret: null,
-          backup_codes: null
-        })
-        .eq('user_id', user?.id);
-
-      console.log('✅ 2FA disabled successfully');
-      if (profile?.organization_id) {
-        await logAuditEvent('two_factor_disabled', user?.id, profile.organization_id);
-      }
-      await refreshProfile();
-      
-      return {};
-    } catch (error) {
-      console.error('❌ Error disabling 2FA:', error);
-      return { error: 'Failed to disable two-factor authentication' };
+    console.log('🔒 useAuth: Disabling 2FA');
+    
+    if (!user) {
+      console.warn('❌ useAuth: Cannot disable 2FA: no user logged in');
+      return { error: 'You must be logged in to disable 2FA' };
     }
+    
+    const { error } = await authService.disableTwoFactor(user.id, password);
+    
+    if (error) {
+      console.error('❌ useAuth: Error disabling 2FA:', error);
+      return { error };
+    }
+    
+    console.log('✅ useAuth: 2FA disabled successfully');
+    
+    if (profile?.organization_id) {
+      await logAuditEvent('two_factor_disabled', user.id, profile.organization_id);
+    }
+    
+    await refreshProfile();
+    
+    return {};
+  };
+
+  const getInvitationDetails = async (invitationCode: string) => {
+    console.log('🔍 useAuth: Getting invitation details for code:', invitationCode);
+    
+    const { data, error } = await authService.getInvitationDetails(invitationCode);
+    
+    if (error || !data) {
+      console.warn('❌ useAuth: Error fetching invitation details:', error);
+      return { error: error || 'Invalid or expired invitation code' };
+    }
+    
+    console.log('✅ useAuth: Invitation details found');
+    
+    return {
+      organizationId: data.organizationId,
+      organizationName: data.organizationName
+    };
   };
 
   const joinOrganization = async (invitationCode: string) => {
-    try {
-      console.log('🏢 Joining organization with code:', invitationCode);
-      if (!user) {
-        console.warn('❌ Cannot join organization: user not logged in');
-        return { error: 'You must be logged in to join an organization' };
-      }
-
-      // Get the current session
-      console.log('🔍 Getting current session for API call');
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token;
-      
-      if (!accessToken) {
-        console.warn('❌ No access token available for API call');
-        return { error: 'No access token available' };
-      }
-
-      // Call the accept-invitation edge function
-      console.log('🔄 Calling accept-invitation edge function');
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/accept-invitation`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
-          invitationCode
-        })
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        console.warn('❌ Failed to join organization:', result.error);
-        return { error: result.error || 'Failed to join organization' };
-      }
-
-      console.log('✅ Successfully joined organization:', result.organization);
-      // Refresh user profile to get updated organization
-      await refreshProfile();
-      
-      return { 
-        organization: result.organization
-      };
-    } catch (error) {
-      console.error('❌ Error joining organization:', error);
-      return { error: 'An unexpected error occurred while joining the organization' };
+    console.log('🏢 useAuth: Joining organization with code:', invitationCode);
+    
+    if (!user) {
+      console.warn('❌ useAuth: Cannot join organization: user not logged in');
+      return { error: 'You must be logged in to join an organization' };
     }
+    
+    // Get the current session
+    console.log('🔍 useAuth: Getting current session for API call');
+    const { data: sessionData } = await authService.getSession();
+    const accessToken = sessionData?.access_token;
+    
+    if (!accessToken) {
+      console.warn('❌ useAuth: No access token available for API call');
+      return { error: 'No access token available' };
+    }
+    
+    const { data, error } = await authService.joinOrganization(invitationCode, accessToken);
+    
+    if (error || !data) {
+      console.warn('❌ useAuth: Failed to join organization:', error);
+      return { error: error || 'Failed to join organization' };
+    }
+    
+    console.log('✅ useAuth: Successfully joined organization:', data.organization);
+    
+    // Refresh user profile to get updated organization
+    await refreshProfile();
+    
+    return { 
+      organization: data.organization
+    };
   };
 
   const hasPermission = (permission: string): boolean => {
@@ -721,12 +569,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = async () => {
     if (user) {
-      console.log('🔄 Refreshing user profile:', user.id);
+      console.log('🔄 useAuth: Refreshing user profile:', user.id);
       setLoading(true);
       try {
-        console.log('🔍 Fetching updated profile data');
+        console.log('🔍 useAuth: Fetching updated profile data');
         const fetchedProfile = await fetchUserProfile(user.id);
-        console.log('👤 Profile refreshed:', { 
+        console.log('👤 useAuth: Profile refreshed:', { 
           success: !!fetchedProfile, 
           profileId: fetchedProfile?.id,
           role: fetchedProfile?.role,
@@ -735,25 +583,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfile(fetchedProfile);
         
         if (fetchedProfile?.organization_id) {
-          console.log('🏢 Refreshing organization:', fetchedProfile.organization_id);
+          console.log('🏢 useAuth: Refreshing organization:', fetchedProfile.organization_id);
           const fetchedOrganization = await fetchOrganization(fetchedProfile.organization_id);
-          console.log('🏢 Organization refreshed:', { 
+          console.log('🏢 useAuth: Organization refreshed:', { 
             success: !!fetchedOrganization, 
             name: fetchedOrganization?.name,
             planType: fetchedOrganization?.plan_type
           });
           setOrganization(fetchedOrganization);
         } else {
-          console.log('⚠️ No organization_id in refreshed profile');
+          console.log('⚠️ useAuth: No organization_id in refreshed profile');
         }
       } catch (error) {
-        console.error('❌ Error refreshing profile:', error);
+        console.error('❌ useAuth: Error refreshing profile:', error);
       } finally {
-        console.log('✅ Profile refresh complete, setting loading to false');
+        console.log('✅ useAuth: Profile refresh complete, setting loading to false');
         setLoading(false);
       }
     } else {
-      console.warn('⚠️ Cannot refresh profile: no user logged in');
+      console.warn('⚠️ useAuth: Cannot refresh profile: no user logged in');
     }
   };
 

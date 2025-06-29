@@ -216,16 +216,6 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  const getClientIP = async (): Promise<string | null> => {
-    try {
-      const response = await fetch('https://api.ipify.org?format=json');
-      const data = await response.json();
-      return data.ip;
-    } catch {
-      return null;
-    }
-  };
-
   if (showTwoFactor) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-purple-900 flex items-center justify-center p-4">
