@@ -425,19 +425,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const createOrganizationForUser = async (fullName: string): Promise<string | null> => {
+    try {
+      console.log('🏢 Creating new organization for user:', { fullName });
+      
+      // Extract organization name from user's full name or email
+      const organizationName = `${fullName}'s Organization`;
+      
+      const { data, error } = await supabase
+        .from('organizations')
+        .insert({
+          name: organizationName,
+          plan_type: 'starter',
+          settings: {}
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating organization:', error);
+        return null;
+      }
+
+      console.log('✅ Organization created successfully:', { 
+        id: data.id, 
+        name: data.name 
+      });
+      return data.id;
+    } catch (error) {
+      console.error('❌ Unexpected error creating organization:', error);
+      return null;
+    }
+  };
+
   const signUp = async (email: string, password: string, fullName: string, organizationId?: string) => {
     try {
       console.log('📝 Attempting sign up:', { email, fullName, hasOrganizationId: !!organizationId });
       
+      let finalOrganizationId = organizationId;
+      let userRole: 'admin' | 'user' = 'user';
+
+      // If no organizationId provided, create a new organization
+      if (!organizationId) {
+        console.log('🏢 No organization ID provided, creating new organization');
+        finalOrganizationId = await createOrganizationForUser(fullName);
+        
+        if (!finalOrganizationId) {
+          console.error('❌ Failed to create organization for user');
+          return { error: 'Failed to create organization. Please try again.' };
+        }
+        
+        // User becomes admin of their own organization
+        userRole = 'admin';
+        console.log('✅ New organization created, user will be admin');
+      }
+
       // Prepare user metadata
       const userData: any = {
-        full_name: fullName
+        full_name: fullName,
+        organization_id: finalOrganizationId,
+        role: userRole
       };
 
-      // If we have an organization ID, include it in the metadata
-      if (organizationId) {
-        userData.organization_id = organizationId;
-      }
+      console.log('📝 Signing up user with metadata:', userData);
 
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -456,7 +506,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userId: data.user?.id, 
         email: data.user?.email,
         fullName: data.user?.user_metadata?.full_name,
-        organizationId: data.user?.user_metadata?.organization_id
+        organizationId: data.user?.user_metadata?.organization_id,
+        role: data.user?.user_metadata?.role
       });
 
       return {};
