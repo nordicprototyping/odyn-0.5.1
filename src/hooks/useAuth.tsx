@@ -12,7 +12,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string, rememberMe?: boolean) => Promise<{ error?: string; requiresTwoFactor?: boolean }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error?: string }>;
+  signUp: (email: string, password: string, fullName: string, organizationId?: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error?: string }>;
   updatePassword: (password: string) => Promise<{ error?: string }>;
@@ -24,6 +24,7 @@ interface AuthContextType {
   hasRole: (role: string | string[]) => boolean;
   refreshProfile: () => Promise<void>;
   joinOrganization: (invitationCode: string) => Promise<{ error?: string; organization?: { id: string; name: string } }>;
+  getInvitationDetails: (invitationCode: string) => Promise<{ error?: string; organizationId?: string; organizationName?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -390,16 +391,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
+  const getInvitationDetails = async (invitationCode: string) => {
     try {
-      console.log('📝 Attempting sign up:', { email, fullName });
+      console.log('🔍 Getting invitation details for code:', invitationCode);
+      const { data, error } = await supabase
+        .from('organization_invitations')
+        .select(`
+          organization_id,
+          organizations!inner(name)
+        `)
+        .eq('invitation_code', invitationCode)
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString())
+        .single();
+
+      if (error) {
+        console.warn('❌ Error fetching invitation details:', error.message);
+        return { error: 'Invalid or expired invitation code' };
+      }
+
+      console.log('✅ Invitation details found:', { 
+        organizationId: data.organization_id,
+        organizationName: data.organizations.name
+      });
+
+      return {
+        organizationId: data.organization_id,
+        organizationName: data.organizations.name
+      };
+    } catch (error) {
+      console.error('❌ Unexpected error fetching invitation details:', error);
+      return { error: 'An unexpected error occurred' };
+    }
+  };
+
+  const signUp = async (email: string, password: string, fullName: string, organizationId?: string) => {
+    try {
+      console.log('📝 Attempting sign up:', { email, fullName, hasOrganizationId: !!organizationId });
+      
+      // Prepare user metadata
+      const userData: any = {
+        full_name: fullName
+      };
+
+      // If we have an organization ID, include it in the metadata
+      if (organizationId) {
+        userData.organization_id = organizationId;
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: {
-            full_name: fullName
-          }
+          data: userData
         }
       });
 
@@ -411,11 +455,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('✅ Sign up successful:', { 
         userId: data.user?.id, 
         email: data.user?.email,
-        fullName: data.user?.user_metadata?.full_name
+        fullName: data.user?.user_metadata?.full_name,
+        organizationId: data.user?.user_metadata?.organization_id
       });
-      // Note: We can't log signup events to audit_logs here because the user profile
-      // and organization haven't been created yet. This will be handled by the
-      // database trigger or signup completion process.
 
       return {};
     } catch (error) {
@@ -682,7 +724,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     hasPermission,
     hasRole,
     refreshProfile,
-    joinOrganization
+    joinOrganization,
+    getInvitationDetails
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

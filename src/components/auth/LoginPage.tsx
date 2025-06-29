@@ -17,6 +17,7 @@ const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -29,7 +30,7 @@ const LoginPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const invitationCode = searchParams.get('invitation');
 
-  const { signIn, signUp, resetPassword, verifyTwoFactor, user } = useAuth();
+  const { signIn, signUp, resetPassword, verifyTwoFactor, user, getInvitationDetails } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -45,6 +46,21 @@ const LoginPage: React.FC = () => {
       }
     }
   }, [user, navigate, location, invitationCode]);
+
+  useEffect(() => {
+    // If there's an invitation code, fetch the organization details
+    if (invitationCode && !isLogin) {
+      const fetchInvitationDetails = async () => {
+        const result = await getInvitationDetails(invitationCode);
+        if (result.organizationName) {
+          setOrganizationName(result.organizationName);
+        } else if (result.error) {
+          setError(result.error);
+        }
+      };
+      fetchInvitationDetails();
+    }
+  }, [invitationCode, isLogin, getInvitationDetails]);
 
   useEffect(() => {
     if (!isLogin && password) {
@@ -122,7 +138,19 @@ const LoginPage: React.FC = () => {
           return;
         }
 
-        const result = await signUp(email, password, fullName);
+        // Get organization ID if there's an invitation code
+        let organizationId: string | undefined;
+        if (invitationCode) {
+          const invitationDetails = await getInvitationDetails(invitationCode);
+          if (invitationDetails.error) {
+            setError(invitationDetails.error);
+            setLoading(false);
+            return;
+          }
+          organizationId = invitationDetails.organizationId;
+        }
+
+        const result = await signUp(email, password, fullName, organizationId);
         
         if (result.error) {
           setError(result.error);
@@ -296,7 +324,10 @@ const LoginPage: React.FC = () => {
             {invitationCode && (
               <div className="mt-2 p-2 bg-blue-50 rounded-lg">
                 <p className="text-sm text-blue-700">
-                  You've been invited to join an organization
+                  {organizationName 
+                    ? `You've been invited to join ${organizationName}`
+                    : 'You\'ve been invited to join an organization'
+                  }
                 </p>
               </div>
             )}
