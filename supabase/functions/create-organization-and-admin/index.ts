@@ -102,9 +102,15 @@ Deno.serve(async (req: Request) => {
     
     if (orgError) {
       console.error('Error creating organization:', orgError);
+      let errorMessage = 'Failed to create organization.';
+      if (orgError.code === '23505') { // Unique violation code
+        errorMessage = 'An organization with this name already exists. Please try a different name or sign in.';
+      } else {
+        errorMessage += ` Details: ${orgError.message}`;
+      }
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'Failed to create organization: ' + orgError.message 
+        error: errorMessage 
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -136,7 +142,7 @@ Deno.serve(async (req: Request) => {
       console.error('Error creating user:', authError);
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'Failed to create user: ' + (authError?.message || 'Unknown error') 
+        error: `Failed to create user: ${authError?.message || 'Unknown error'}` 
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -200,7 +206,7 @@ Deno.serve(async (req: Request) => {
     
     return new Response(JSON.stringify({ 
       success: false, 
-      error: 'Internal server error: ' + (error instanceof Error ? error.message : String(error))
+      error: `Internal server error: ${error instanceof Error ? error.message : String(error)}`
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
