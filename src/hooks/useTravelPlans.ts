@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from './useAuth';
+import { createEventNotification } from '../services/notificationService';
 
 type TravelPlan = Database['public']['Tables']['travel_plans']['Row'];
 type TravelPlanInsert = Database['public']['Tables']['travel_plans']['Insert'];
@@ -63,6 +64,22 @@ export function useTravelPlans() {
           departure_date: travelPlanData.departure_date,
           status: travelPlanData.status || 'pending'
         });
+        
+        // Create notification for new travel plan
+        const riskScore = (travelPlanData.risk_assessment as any)?.overall || 0;
+        const priority = riskScore > 70 ? 'high' : riskScore > 30 ? 'medium' : 'low';
+        
+        // Notify admins about new travel plan
+        await createEventNotification({
+          organizationId: profile?.organization_id || '',
+          userId: null, // Send to all users with appropriate permissions
+          eventType: 'created',
+          resourceType: 'travel_plan',
+          resourceId: data[0].id,
+          resourceName: `${travelPlanData.traveler_name}'s travel to ${(travelPlanData.destination as any)?.city || 'destination'}`,
+          details: `New travel plan submitted for approval. Departure: ${new Date(travelPlanData.departure_date).toLocaleDateString()}.`,
+          priority: priority as any
+        });
       }
       
       return data?.[0] || null;
@@ -79,6 +96,13 @@ export function useTravelPlans() {
     try {
       setLoading(true);
       setError(null);
+
+      // Get current travel plan data for comparison
+      const { data: currentPlan } = await supabase
+        .from('travel_plans')
+        .select('status, traveler_name, traveler_user_id, destination')
+        .eq('id', id)
+        .single();
 
       const { data, error } = await supabase
         .from('travel_plans')
@@ -100,6 +124,32 @@ export function useTravelPlans() {
           status: travelPlanData.status || data[0].status,
           updated_fields: Object.keys(travelPlanData).filter(k => k !== 'id' && k !== 'organization_id')
         });
+        
+        // Create notification for status change
+        if (currentPlan && travelPlanData.status && currentPlan.status !== travelPlanData.status) {
+          const riskScore = ((data[0].risk_assessment as any)?.overall || 0);
+          const priority = riskScore > 70 ? 'high' : riskScore > 30 ? 'medium' : 'low';
+          
+          // Determine event type based on status
+          let eventType: 'approved' | 'rejected' | 'updated' | 'completed' = 'updated';
+          if (travelPlanData.status === 'approved') eventType = 'approved';
+          else if (travelPlanData.status === 'denied') eventType = 'rejected';
+          else if (travelPlanData.status === 'completed') eventType = 'completed';
+          
+          // Notify the traveler about status change
+          if (currentPlan.traveler_user_id) {
+            await createEventNotification({
+              organizationId: profile?.organization_id || '',
+              userId: currentPlan.traveler_user_id,
+              eventType,
+              resourceType: 'travel_plan',
+              resourceId: data[0].id,
+              resourceName: `Travel to ${((currentPlan.destination as any)?.city || 'destination')}`,
+              details: `Your travel plan has been ${travelPlanData.status}.`,
+              priority: priority as any
+            });
+          }
+        }
       }
       
       return data?.[0] || null;
@@ -120,7 +170,7 @@ export function useTravelPlans() {
       // Get travel plan details before deletion for audit log
       const { data: planToDelete } = await supabase
         .from('travel_plans')
-        .select('traveler_name, destination')
+        .select('traveler_name, destination, traveler_user_id')
         .eq('id', id)
         .single();
 
@@ -142,6 +192,20 @@ export function useTravelPlans() {
           destination: planToDelete.destination,
           deleted_at: new Date().toISOString()
         });
+        
+        // Create notification for travel plan deletion
+        if (planToDelete.traveler_user_id) {
+          await createEventNotification({
+            organizationId: profile?.organization_id || '',
+            userId: planToDelete.traveler_user_id,
+            eventType: 'deleted',
+            resourceType: 'travel_plan',
+            resourceId: id,
+            resourceName: `Travel to ${(planToDelete.destination as any)?.city || 'destination'}`,
+            details: `Your travel plan has been deleted.`,
+            priority: 'medium'
+          });
+        }
       }
     } catch (err) {
       console.error('Error deleting travel plan:', err);

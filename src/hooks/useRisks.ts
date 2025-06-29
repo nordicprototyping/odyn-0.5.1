@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { AppliedMitigation } from '../types/mitigation';
+import { createEventNotification } from '../services/notificationService';
 
 type Risk = Database['public']['Tables']['risks']['Row'];
 type RiskInsert = Database['public']['Tables']['risks']['Insert'];
@@ -125,6 +126,25 @@ export function useRisks() {
             ai_confidence: riskData.ai_confidence
           }
         );
+        
+        // Create notification for new risk
+        const priority = 
+          (riskData.impact === 'very_high' || riskData.likelihood === 'very_high') ? 'critical' :
+          (riskData.impact === 'high' || riskData.likelihood === 'high') ? 'high' :
+          (riskData.impact === 'medium' || riskData.likelihood === 'medium') ? 'medium' : 'low';
+        
+        await createEventNotification({
+          organizationId: profile?.organization_id || '',
+          userId: riskData.owner_user_id, // Send to the risk owner if specified
+          eventType: riskData.is_ai_generated ? 'alert' : 'created',
+          resourceType: 'risk',
+          resourceId: data[0].id,
+          resourceName: riskData.title,
+          details: riskData.is_ai_generated 
+            ? `AI detected a new risk with ${riskData.ai_confidence}% confidence.` 
+            : `New risk identified with ${riskData.impact}/${riskData.likelihood} impact/likelihood.`,
+          priority: priority as any
+        });
       }
       
       return data?.[0] || null;
@@ -153,6 +173,13 @@ export function useRisks() {
         source_travel_plan_id: riskData.source_travel_plan_id && isValidUUID(riskData.source_travel_plan_id) ? riskData.source_travel_plan_id : null
       };
 
+      // Get current risk data for comparison
+      const { data: currentRisk } = await supabase
+        .from('risks')
+        .select('status, impact, likelihood, owner_user_id, title')
+        .eq('id', id)
+        .single();
+
       const { data, error } = await supabase
         .from('risks')
         .update(sanitizedRiskData)
@@ -162,6 +189,45 @@ export function useRisks() {
       if (error) throw error;
 
       setRisks(prev => prev.map(risk => risk.id === id ? (data?.[0] || risk) : risk));
+      
+      // Create notification for status change
+      if (data?.[0] && currentRisk && riskData.status && currentRisk.status !== riskData.status) {
+        const priority = 
+          (data[0].impact === 'very_high' || data[0].likelihood === 'very_high') ? 'high' :
+          (data[0].impact === 'high' || data[0].likelihood === 'high') ? 'medium' : 'low';
+        
+        // Notify the risk owner about status change
+        if (data[0].owner_user_id) {
+          await createEventNotification({
+            organizationId: profile?.organization_id || '',
+            userId: data[0].owner_user_id,
+            eventType: 'updated',
+            resourceType: 'risk',
+            resourceId: data[0].id,
+            resourceName: data[0].title,
+            details: `Risk status changed from ${currentRisk.status} to ${riskData.status}.`,
+            priority: priority as any
+          });
+        }
+      }
+      
+      // Create notification for owner change
+      if (data?.[0] && currentRisk && riskData.owner_user_id && currentRisk.owner_user_id !== riskData.owner_user_id) {
+        const priority = 'medium';
+        
+        // Notify the new risk owner
+        await createEventNotification({
+          organizationId: profile?.organization_id || '',
+          userId: riskData.owner_user_id,
+          eventType: 'updated',
+          resourceType: 'risk',
+          resourceId: data[0].id,
+          resourceName: data[0].title,
+          details: `You have been assigned as the owner of this risk.`,
+          priority: priority as any
+        });
+      }
+      
       return data?.[0] || null;
     } catch (err) {
       console.error('Error updating risk:', err);
@@ -177,6 +243,13 @@ export function useRisks() {
       setLoading(true);
       setError(null);
 
+      // Get risk details before deletion
+      const { data: riskToDelete } = await supabase
+        .from('risks')
+        .select('title, category, impact, likelihood')
+        .eq('id', id)
+        .single();
+
       const { error } = await supabase
         .from('risks')
         .delete()
@@ -185,6 +258,24 @@ export function useRisks() {
       if (error) throw error;
 
       setRisks(prev => prev.filter(risk => risk.id !== id));
+      
+      // Create notification for risk deletion
+      if (riskToDelete) {
+        const priority = 
+          (riskToDelete.impact === 'very_high' || riskToDelete.likelihood === 'very_high') ? 'medium' :
+          (riskToDelete.impact === 'high' || riskToDelete.likelihood === 'high') ? 'low' : 'low';
+        
+        await createEventNotification({
+          organizationId: profile?.organization_id || '',
+          userId: null, // Send to all users in the organization
+          eventType: 'deleted',
+          resourceType: 'risk',
+          resourceId: id,
+          resourceName: riskToDelete.title,
+          details: `A ${riskToDelete.category.replace(/_/g, ' ')} risk has been deleted.`,
+          priority: priority as any
+        });
+      }
     } catch (err) {
       console.error('Error deleting risk:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete risk');

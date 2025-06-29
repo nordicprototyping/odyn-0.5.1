@@ -12,70 +12,16 @@ import AppSidebar from './AppSidebar';
 import NotificationPanel from './NotificationPanel';
 import GlobalSearchResults from './GlobalSearchResults';
 import { globalSearch, SearchResult } from '../services/globalSearchService';
+import { useNotifications } from '../hooks/useNotifications';
 
 interface MainLayoutProps {
   children: React.ReactNode;
 }
 
-// Mock notification data - in a real app, this would come from an API or state management
-const mockNotifications = [
-  {
-    id: '1',
-    type: 'alert' as const,
-    title: 'High Risk Travel Alert',
-    message: 'Marcus Rodriguez travel plan to Istanbul requires immediate review due to elevated security threats in the region.',
-    timestamp: '2 minutes ago',
-    read: false,
-    category: 'travel' as const,
-    priority: 'critical' as const
-  },
-  {
-    id: '2',
-    type: 'warning' as const,
-    title: 'Security System Maintenance',
-    message: 'Access control system at London HQ will undergo maintenance tonight from 11 PM to 3 AM.',
-    timestamp: '15 minutes ago',
-    read: false,
-    category: 'security' as const,
-    priority: 'medium' as const
-  },
-  {
-    id: '3',
-    type: 'info' as const,
-    title: 'New Personnel Added',
-    message: 'Dr. Elena Volkov has been successfully added to the personnel database with Confidential clearance.',
-    timestamp: '1 hour ago',
-    read: true,
-    category: 'personnel' as const,
-    priority: 'low' as const
-  },
-  {
-    id: '4',
-    type: 'alert' as const,
-    title: 'Incident Report Filed',
-    message: 'New security incident reported at Embassy Compound A - unauthorized access attempt detected.',
-    timestamp: '2 hours ago',
-    read: false,
-    category: 'incident' as const,
-    priority: 'high' as const
-  },
-  {
-    id: '5',
-    type: 'success' as const,
-    title: 'Risk Mitigation Complete',
-    message: 'Cyber security risk mitigation plan has been successfully implemented and verified.',
-    timestamp: '3 hours ago',
-    read: true,
-    category: 'security' as const,
-    priority: 'medium' as const
-  }
-];
-
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState(mockNotifications);
   
   // Global search state
   const [searchTerm, setSearchTerm] = useState('');
@@ -87,6 +33,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const searchRef = useRef<HTMLDivElement>(null);
 
   const { user, profile } = useAuth();
+  const { 
+    notifications, 
+    loading: notificationsLoading, 
+    markAsRead, 
+    markAllAsRead,
+    getUnreadCount
+  } = useNotifications();
+  
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -116,22 +70,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     if (showSearchResults) {
       setShowSearchResults(false);
     }
-  };
-
-  const handleMarkAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(notification => 
-        notification.id === id 
-          ? { ...notification, read: true }
-          : notification
-      )
-    );
-  };
-
-  const handleMarkAllAsRead = () => {
-    setNotifications(prev => 
-      prev.map(notification => ({ ...notification, read: true }))
-    );
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -179,7 +117,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     setSearchTerm('');
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = getUnreadCount();
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -267,8 +205,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                   <NotificationPanel
                     notifications={notifications}
                     onClose={() => setShowNotifications(false)}
-                    onMarkAsRead={handleMarkAsRead}
-                    onMarkAllAsRead={handleMarkAllAsRead}
+                    onMarkAsRead={markAsRead}
+                    onMarkAllAsRead={markAllAsRead}
                   />
                 )}
               </div>

@@ -1,30 +1,25 @@
 import React from 'react';
-import { X, AlertTriangle, CheckCircle, Info, Clock, User, MapPin, Shield } from 'lucide-react';
-
-interface Notification {
-  id: string;
-  type: 'alert' | 'info' | 'success' | 'warning';
-  title: string;
-  message: string;
-  timestamp: string;
-  read: boolean;
-  category: 'security' | 'personnel' | 'travel' | 'system' | 'incident';
-  priority: 'low' | 'medium' | 'high' | 'critical';
-}
+import { X, AlertTriangle, CheckCircle, Info, Clock, User, MapPin, Shield, Building, Plane, FileText, Brain } from 'lucide-react';
+import { Notification } from '../hooks/useNotifications';
+import { useNavigate } from 'react-router-dom';
 
 interface NotificationPanelProps {
   notifications: Notification[];
   onClose: () => void;
   onMarkAsRead: (id: string) => void;
   onMarkAllAsRead: () => void;
+  onDelete?: (id: string) => void;
 }
 
 const NotificationPanel: React.FC<NotificationPanelProps> = ({
   notifications,
   onClose,
   onMarkAsRead,
-  onMarkAllAsRead
+  onMarkAllAsRead,
+  onDelete
 }) => {
+  const navigate = useNavigate();
+
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'alert':
@@ -46,11 +41,17 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
       case 'personnel':
         return <User className="w-4 h-4 text-blue-500" />;
       case 'travel':
-        return <MapPin className="w-4 h-4 text-green-500" />;
+        return <Plane className="w-4 h-4 text-green-500" />;
       case 'system':
         return <Info className="w-4 h-4 text-gray-500" />;
       case 'incident':
         return <AlertTriangle className="w-4 h-4 text-orange-500" />;
+      case 'risk':
+        return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+      case 'asset':
+        return <Building className="w-4 h-4 text-indigo-500" />;
+      case 'audit':
+        return <FileText className="w-4 h-4 text-purple-500" />;
       default:
         return <Info className="w-4 h-4 text-gray-500" />;
     }
@@ -71,10 +72,68 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
     }
   };
 
+  const getTimeAgo = (timestamp: string) => {
+    const now = new Date();
+    const notificationTime = new Date(timestamp);
+    const diffInMs = now.getTime() - notificationTime.getTime();
+    
+    const diffInSecs = Math.floor(diffInMs / 1000);
+    const diffInMins = Math.floor(diffInSecs / 60);
+    const diffInHours = Math.floor(diffInMins / 60);
+    const diffInDays = Math.floor(diffInHours / 24);
+    
+    if (diffInSecs < 60) {
+      return 'Just now';
+    } else if (diffInMins < 60) {
+      return `${diffInMins} minute${diffInMins > 1 ? 's' : ''} ago`;
+    } else if (diffInHours < 24) {
+      return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
+    } else if (diffInDays < 7) {
+      return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
+    } else {
+      return notificationTime.toLocaleDateString();
+    }
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
+    // Mark as read
+    onMarkAsRead(notification.id);
+    
+    // Navigate to the relevant page based on resource type
+    if (notification.resource_type && notification.resource_id) {
+      switch (notification.resource_type) {
+        case 'asset':
+          navigate('/dashboard/assets');
+          break;
+        case 'personnel':
+          navigate('/dashboard/personnel');
+          break;
+        case 'incident':
+          navigate('/dashboard/incidents');
+          break;
+        case 'risk':
+          navigate('/dashboard/risks');
+          break;
+        case 'travel_plan':
+          navigate('/dashboard/travel');
+          break;
+        case 'audit':
+          navigate('/admin/audit-logs');
+          break;
+        default:
+          // No navigation
+          break;
+      }
+    }
+    
+    // Close the notification panel
+    onClose();
+  };
+
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
-    <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-96 overflow-hidden">
+    <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-[80vh] overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b border-gray-200 bg-gray-50">
         <div className="flex items-center justify-between">
@@ -106,7 +165,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
       </div>
 
       {/* Notifications List */}
-      <div className="max-h-80 overflow-y-auto">
+      <div className="max-h-[calc(80vh-60px)] overflow-y-auto">
         {notifications.length === 0 ? (
           <div className="p-8 text-center">
             <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -123,7 +182,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
                 className={`p-4 hover:bg-gray-50 transition-colors cursor-pointer border-l-4 ${
                   !notification.read ? getPriorityColor(notification.priority) : 'border-l-gray-200 bg-white'
                 }`}
-                onClick={() => onMarkAsRead(notification.id)}
+                onClick={() => handleNotificationClick(notification)}
               >
                 <div className="flex items-start space-x-3">
                   <div className="flex-shrink-0 mt-0.5">
@@ -147,7 +206,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
                     <div className="flex items-center justify-between mt-2">
                       <div className="flex items-center space-x-1 text-xs text-gray-400">
                         <Clock className="w-3 h-3" />
-                        <span>{notification.timestamp}</span>
+                        <span>{getTimeAgo(notification.created_at)}</span>
                       </div>
                       <span className={`text-xs px-2 py-1 rounded-full ${
                         notification.priority === 'critical' ? 'bg-red-100 text-red-700' :
@@ -160,6 +219,20 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
                     </div>
                   </div>
                 </div>
+                
+                {onDelete && (
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(notification.id);
+                      }}
+                      className="text-xs text-gray-400 hover:text-red-500"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -169,7 +242,13 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
       {/* Footer */}
       {notifications.length > 0 && (
         <div className="p-3 border-t border-gray-200 bg-gray-50">
-          <button className="w-full text-center text-sm text-blue-600 hover:text-blue-800 font-medium">
+          <button 
+            onClick={() => {
+              navigate('/notifications');
+              onClose();
+            }}
+            className="w-full text-center text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
             View all notifications
           </button>
         </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from './useAuth';
+import { createEventNotification } from '../services/notificationService';
 
 type Personnel = Database['public']['Tables']['personnel_details']['Row'];
 type PersonnelInsert = Database['public']['Tables']['personnel_details']['Insert'];
@@ -63,6 +64,21 @@ export function usePersonnel() {
           employee_id: personnelData.employee_id,
           department: personnelData.department
         });
+        
+        // Create notification for new personnel
+        const riskScore = (personnelData.ai_risk_score as any)?.overall || 0;
+        const priority = riskScore > 70 ? 'high' : riskScore > 30 ? 'medium' : 'low';
+        
+        await createEventNotification({
+          organizationId: profile?.organization_id || '',
+          userId: null, // Send to all users in the organization
+          eventType: 'created',
+          resourceType: 'personnel',
+          resourceId: data[0].id,
+          resourceName: personnelData.name,
+          details: `New ${personnelData.category} personnel added to ${personnelData.department} department.`,
+          priority: priority as any
+        });
       }
       
       return data?.[0] || null;
@@ -79,6 +95,13 @@ export function usePersonnel() {
     try {
       setLoading(true);
       setError(null);
+
+      // Get current personnel data for comparison
+      const { data: currentPersonnel } = await supabase
+        .from('personnel_details')
+        .select('status, name, department')
+        .eq('id', id)
+        .single();
 
       const { data, error } = await supabase
         .from('personnel_details')
@@ -100,6 +123,38 @@ export function usePersonnel() {
           department: personnelData.department || data[0].department,
           status: personnelData.status || data[0].status
         });
+        
+        // Create notification for status change
+        if (currentPersonnel && personnelData.status && currentPersonnel.status !== personnelData.status) {
+          const priority = 
+            personnelData.status === 'unavailable' ? 'high' : 
+            personnelData.status === 'on-mission' || personnelData.status === 'in-transit' ? 'medium' : 'low';
+          
+          await createEventNotification({
+            organizationId: profile?.organization_id || '',
+            userId: null, // Send to all users in the organization
+            eventType: 'updated',
+            resourceType: 'personnel',
+            resourceId: data[0].id,
+            resourceName: data[0].name,
+            details: `Personnel status changed from ${currentPersonnel.status} to ${personnelData.status}.`,
+            priority: priority as any
+          });
+        }
+        
+        // Create notification for high risk score
+        if (personnelData.ai_risk_score && (personnelData.ai_risk_score as any).overall > 70) {
+          await createEventNotification({
+            organizationId: profile?.organization_id || '',
+            userId: null, // Send to all users in the organization
+            eventType: 'alert',
+            resourceType: 'personnel',
+            resourceId: data[0].id,
+            resourceName: data[0].name,
+            details: `High risk score detected for personnel: ${(personnelData.ai_risk_score as any).overall}.`,
+            priority: 'high'
+          });
+        }
       }
       
       return data?.[0] || null;
@@ -120,7 +175,7 @@ export function usePersonnel() {
       // Get personnel details before deletion for audit log
       const { data: personnelToDelete } = await supabase
         .from('personnel_details')
-        .select('name, employee_id')
+        .select('name, employee_id, department')
         .eq('id', id)
         .single();
 
@@ -140,7 +195,20 @@ export function usePersonnel() {
         await logAuditEvent('personnel_deleted', id, { 
           personnel_name: personnelToDelete.name,
           employee_id: personnelToDelete.employee_id,
+          department: personnelToDelete.department,
           deleted_at: new Date().toISOString()
+        });
+        
+        // Create notification for personnel deletion
+        await createEventNotification({
+          organizationId: profile?.organization_id || '',
+          userId: null, // Send to all users in the organization
+          eventType: 'deleted',
+          resourceType: 'personnel',
+          resourceId: id,
+          resourceName: personnelToDelete.name,
+          details: `Personnel from ${personnelToDelete.department} department has been removed.`,
+          priority: 'medium'
         });
       }
     } catch (err) {

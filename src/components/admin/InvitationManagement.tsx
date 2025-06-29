@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import { createEventNotification } from '../../services/notificationService';
 
 interface Invitation {
   id: string;
@@ -135,6 +136,20 @@ const InvitationManagement: React.FC<InvitationManagementProps> = ({
       });
       setSuccess(`Invitation sent to ${inviteFormData.email}`);
       
+      // Create notification for invitation
+      if (profile?.organization_id) {
+        await createEventNotification({
+          organizationId: profile.organization_id,
+          userId: null, // Send to all admins
+          eventType: 'created',
+          resourceType: 'invitation',
+          resourceId: result.invitation?.id,
+          resourceName: inviteFormData.email,
+          details: `Invitation sent to ${inviteFormData.email} with role ${inviteFormData.role}.`,
+          priority: 'medium'
+        });
+      }
+      
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -150,6 +165,13 @@ const InvitationManagement: React.FC<InvitationManagementProps> = ({
       setLoading(true);
       setError(null);
       
+      // Get invitation details before cancellation
+      const { data: invitationToCancel } = await supabase
+        .from('organization_invitations')
+        .select('invited_email, role')
+        .eq('id', invitationId)
+        .single();
+      
       const { error } = await supabase
         .from('organization_invitations')
         .update({ status: 'cancelled' })
@@ -162,6 +184,20 @@ const InvitationManagement: React.FC<InvitationManagementProps> = ({
       // Refresh the invitations list
       await fetchInvitations();
       setSuccess('Invitation cancelled successfully');
+      
+      // Create notification for cancelled invitation
+      if (profile?.organization_id && invitationToCancel) {
+        await createEventNotification({
+          organizationId: profile.organization_id,
+          userId: null, // Send to all admins
+          eventType: 'deleted',
+          resourceType: 'invitation',
+          resourceId: invitationId,
+          resourceName: invitationToCancel.invited_email,
+          details: `Invitation to ${invitationToCancel.invited_email} with role ${invitationToCancel.role} has been cancelled.`,
+          priority: 'low'
+        });
+      }
       
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
@@ -197,6 +233,20 @@ const InvitationManagement: React.FC<InvitationManagementProps> = ({
       // Refresh the invitations list
       await fetchInvitations();
       setSuccess(`Invitation to ${invitation.invited_email} resent successfully`);
+      
+      // Create notification for resent invitation
+      if (profile?.organization_id) {
+        await createEventNotification({
+          organizationId: profile.organization_id,
+          userId: null, // Send to all admins
+          eventType: 'updated',
+          resourceType: 'invitation',
+          resourceId: invitation.id,
+          resourceName: invitation.invited_email,
+          details: `Invitation to ${invitation.invited_email} with role ${invitation.role} has been resent.`,
+          priority: 'low'
+        });
+      }
       
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from './useAuth';
+import { createEventNotification } from '../services/notificationService';
 
 type Asset = Database['public']['Tables']['assets']['Row'];
 type AssetInsert = Database['public']['Tables']['assets']['Insert'];
@@ -62,6 +63,21 @@ export function useAssets() {
           asset_type: assetData.type,
           asset_location: assetData.location
         });
+        
+        // Create notification for new asset
+        const riskScore = (assetData.ai_risk_score as any)?.overall || 0;
+        const priority = riskScore > 70 ? 'high' : riskScore > 30 ? 'medium' : 'low';
+        
+        await createEventNotification({
+          organizationId: profile?.organization_id || '',
+          userId: null, // Send to all users in the organization
+          eventType: 'created',
+          resourceType: 'asset',
+          resourceId: data[0].id,
+          resourceName: assetData.name,
+          details: `New ${assetData.type.replace('-', ' ')} asset added in ${(assetData.location as any)?.city || 'unknown location'}.`,
+          priority: priority as any
+        });
       }
       
       return data?.[0] || null;
@@ -78,6 +94,13 @@ export function useAssets() {
     try {
       setLoading(true);
       setError(null);
+
+      // Get current asset data for comparison
+      const { data: currentAsset } = await supabase
+        .from('assets')
+        .select('name, type, status')
+        .eq('id', id)
+        .single();
 
       const { data, error } = await supabase
         .from('assets')
@@ -99,6 +122,24 @@ export function useAssets() {
           asset_status: assetData.status || data[0].status,
           asset_location: assetData.location || data[0].location
         });
+        
+        // Create notification for status change
+        if (currentAsset && assetData.status && currentAsset.status !== assetData.status) {
+          const priority = assetData.status === 'alert' || assetData.status === 'compromised' 
+            ? 'high' 
+            : assetData.status === 'maintenance' ? 'medium' : 'low';
+          
+          await createEventNotification({
+            organizationId: profile?.organization_id || '',
+            userId: null, // Send to all users in the organization
+            eventType: 'updated',
+            resourceType: 'asset',
+            resourceId: data[0].id,
+            resourceName: data[0].name,
+            details: `Asset status changed from ${currentAsset.status} to ${assetData.status}.`,
+            priority: priority as any
+          });
+        }
       }
       
       return data?.[0] || null;
@@ -119,7 +160,7 @@ export function useAssets() {
       // Get asset details before deletion for audit log
       const { data: assetToDelete } = await supabase
         .from('assets')
-        .select('name, type')
+        .select('name, type, location')
         .eq('id', id)
         .single();
 
@@ -139,7 +180,20 @@ export function useAssets() {
         await logAuditEvent('asset_deleted', id, { 
           asset_name: assetToDelete.name,
           asset_type: assetToDelete.type,
+          asset_location: assetToDelete.location,
           deleted_at: new Date().toISOString()
+        });
+        
+        // Create notification for asset deletion
+        await createEventNotification({
+          organizationId: profile?.organization_id || '',
+          userId: null, // Send to all users in the organization
+          eventType: 'deleted',
+          resourceType: 'asset',
+          resourceId: id,
+          resourceName: assetToDelete.name,
+          details: `${assetToDelete.type.replace('-', ' ')} asset in ${(assetToDelete.location as any)?.city || 'unknown location'} has been deleted.`,
+          priority: 'medium'
         });
       }
     } catch (err) {

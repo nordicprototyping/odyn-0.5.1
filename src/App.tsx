@@ -17,6 +17,7 @@ import AssetSecurityDashboard from './components/AssetSecurityDashboard';
 import MitigationsPage from './pages/MitigationsPage';
 import JoinOrganizationPage from './pages/JoinOrganizationPage';
 import AuditLogViewer from './components/admin/AuditLogViewer';
+import NotificationsPage from './pages/NotificationsPage';
 import './index.css';
 
 function App() {
@@ -115,6 +116,18 @@ function App() {
               <ProtectedRoute requiredPermission="mitigations.read">
                 <MainLayout>
                   <MitigationsPage />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          
+          {/* Notifications Page */}
+          <Route 
+            path="/notifications" 
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <NotificationsPage />
                 </MainLayout>
               </ProtectedRoute>
             }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, Database } from '../lib/supabase';
 import { useAuth } from './useAuth';
+import { createEventNotification } from '../services/notificationService';
 
 type IncidentReport = Database['public']['Tables']['incident_reports']['Row'];
 type IncidentInsert = Database['public']['Tables']['incident_reports']['Insert'];
@@ -63,6 +64,22 @@ export function useIncidents() {
           incident_location: incidentData.location,
           incident_department: incidentData.department
         });
+        
+        // Create notification for new incident
+        const priority = incidentData.severity === 'Critical' ? 'critical' : 
+                        incidentData.severity === 'High' ? 'high' : 
+                        incidentData.severity === 'Medium' ? 'medium' : 'low';
+        
+        await createEventNotification({
+          organizationId: profile?.organization_id || '',
+          userId: null, // Send to all users in the organization
+          eventType: 'created',
+          resourceType: 'incident',
+          resourceId: data[0].id,
+          resourceName: incidentData.title,
+          details: `${incidentData.severity} severity incident reported in ${incidentData.department}.`,
+          priority: priority as any
+        });
       }
       
       return data?.[0] || null;
@@ -113,6 +130,42 @@ export function useIncidents() {
           previous_status: currentIncident?.status,
           previous_severity: currentIncident?.severity
         });
+        
+        // Create notification for status change
+        if (statusChanged) {
+          const priority = (incidentData.severity || data[0].severity) === 'Critical' ? 'critical' : 
+                          (incidentData.severity || data[0].severity) === 'High' ? 'high' : 
+                          (incidentData.severity || data[0].severity) === 'Medium' ? 'medium' : 'low';
+          
+          await createEventNotification({
+            organizationId: profile?.organization_id || '',
+            userId: null, // Send to all users in the organization
+            eventType: 'updated',
+            resourceType: 'incident',
+            resourceId: data[0].id,
+            resourceName: data[0].title,
+            details: `Status changed from ${currentIncident?.status} to ${incidentData.status}.`,
+            priority: priority as any
+          });
+        }
+        
+        // Create notification for severity change
+        if (severityChanged) {
+          const priority = (incidentData.severity || data[0].severity) === 'Critical' ? 'critical' : 
+                          (incidentData.severity || data[0].severity) === 'High' ? 'high' : 
+                          (incidentData.severity || data[0].severity) === 'Medium' ? 'medium' : 'low';
+          
+          await createEventNotification({
+            organizationId: profile?.organization_id || '',
+            userId: null, // Send to all users in the organization
+            eventType: 'updated',
+            resourceType: 'incident',
+            resourceId: data[0].id,
+            resourceName: data[0].title,
+            details: `Severity changed from ${currentIncident?.severity} to ${incidentData.severity}.`,
+            priority: priority as any
+          });
+        }
       }
       
       return data?.[0] || null;
@@ -155,6 +208,20 @@ export function useIncidents() {
           incident_severity: incidentToDelete.severity,
           incident_status: incidentToDelete.status,
           deleted_at: new Date().toISOString()
+        });
+        
+        // Create notification for incident deletion
+        const priority = incidentToDelete.severity === 'Critical' ? 'high' : 
+                        incidentToDelete.severity === 'High' ? 'medium' : 'low';
+        
+        await createEventNotification({
+          organizationId: profile?.organization_id || '',
+          userId: null, // Send to all users in the organization
+          eventType: 'deleted',
+          resourceType: 'incident',
+          resourceId: id,
+          resourceName: incidentToDelete.title,
+          priority: priority as any
         });
       }
     } catch (err) {
