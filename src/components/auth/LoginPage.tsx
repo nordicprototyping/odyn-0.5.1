@@ -161,6 +161,7 @@ const LoginPage: React.FC = () => {
       }
     } catch (error) {
       setError('An unexpected error occurred. Please try again.');
+      console.error('Login/Signup error:', error);
     } finally {
       setLoading(false);
     }

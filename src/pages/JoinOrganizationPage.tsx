@@ -70,6 +70,9 @@ const JoinOrganizationPage: React.FC = () => {
       setOrganization(result.organization);
       setSuccess(`You have successfully joined ${result.organization?.name}`);
       
+      // Refresh profile to get updated organization data
+      await refreshProfile();
+      
       // Redirect to dashboard after 2 seconds
       setTimeout(() => {
         navigate('/dashboard');

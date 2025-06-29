@@ -164,8 +164,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const fetchUserProfile = async (userId: string, retryCount = 0): Promise<UserProfile | null> => {
-    const maxRetries = 5;
-    const retryDelay = 500; // 500ms delay between retries
+    const maxRetries = 10; // Increased from 5 to 10
+    const retryDelay = 800; // Increased from 500ms to 800ms
 
     console.log(`🔍 Fetching user profile (attempt ${retryCount + 1}/${maxRetries + 1})`, { userId });
 
@@ -223,6 +223,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // If we get here, we have a successful response but data might still be null
         if (!data) {
           console.warn('⚠️ No profile data found for user:', userId);
+          
+          // If we haven't exceeded max retries, try again
+          if (retryCount < maxRetries) {
+            console.log(`⚠️ No profile data, retrying... (attempt ${retryCount + 1}/${maxRetries})`);
+            await wait(retryDelay);
+            return fetchUserProfile(userId, retryCount + 1);
+          }
+          
           return null;
         }
         
@@ -350,23 +358,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp = async (email: string, password: string, fullName: string, organizationId?: string) => {
     console.log('📝 useAuth: Attempting sign up:', { email, fullName, hasOrganizationId: !!organizationId });
     
-    let finalOrganizationId = organizationId;
-    
-    // If no organizationId provided, create a new organization
-    if (!organizationId) {
-      console.log('🏢 useAuth: No organization ID provided, creating new organization');
-      const { data: orgId, error: orgError } = await authService.createOrganizationForUser(fullName);
-      
-      if (orgError || !orgId) {
-        console.error('❌ useAuth: Failed to create organization for user');
-        return { error: 'Failed to create organization. Please try again.' };
-      }
-      
-      finalOrganizationId = orgId;
-      console.log('✅ useAuth: New organization created, user will be admin');
-    }
-    
-    const { data, error } = await authService.signUp(email, password, fullName, finalOrganizationId);
+    const { data, error } = await authService.signUp(email, password, fullName, organizationId);
     
     if (error) {
       console.warn('❌ useAuth: Signup failed:', error);

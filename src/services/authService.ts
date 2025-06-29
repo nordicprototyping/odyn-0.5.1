@@ -77,76 +77,90 @@ export async function signUp(
   try {
     console.log('📝 AuthService: Attempting sign up:', { email, fullName, hasOrganizationId: !!organizationId });
     
-    // Prepare user metadata
-    const userData: any = {
-      full_name: fullName,
-      organization_id: organizationId,
-      role: organizationId ? 'user' : 'admin' // User becomes admin of their own organization
-    };
-
-    console.log('📝 AuthService: Signing up user with metadata:', userData);
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: userData
+    // If organizationId is provided, this is a user joining an existing organization
+    if (organizationId) {
+      console.log('🏢 AuthService: User is joining an existing organization:', organizationId);
+      
+      // Prepare user metadata
+      const userData = {
+        full_name: fullName,
+        organization_id: organizationId,
+        role: 'user' // Default role for users joining an organization
+      };
+      
+      // Sign up the user with Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: userData
+        }
+      });
+      
+      if (error) {
+        console.warn('❌ AuthService: Signup failed:', error.message);
+        return { data: null, error: error.message };
       }
-    });
-
-    if (error) {
-      console.warn('❌ AuthService: Signup failed:', error.message);
-      return { data: null, error: error.message };
+      
+      console.log('✅ AuthService: Sign up successful for existing organization:', { 
+        userId: data.user?.id, 
+        email: data.user?.email,
+        organizationId
+      });
+      
+      return { data: data.user, error: null };
+    } else {
+      // User is creating a new organization - use the Edge Function
+      console.log('🏢 AuthService: User is creating a new organization');
+      
+      // Get the current session
+      const { data: sessionData } = await getSession();
+      const accessToken = sessionData?.access_token;
+      
+      // Call the Edge Function to create organization and admin user
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-organization-and-admin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {})
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          fullName
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        console.warn('❌ AuthService: Organization and admin creation failed:', result.error);
+        return { data: null, error: result.error || 'Failed to create organization and admin user' };
+      }
+      
+      console.log('✅ AuthService: Organization and admin creation successful:', { 
+        userId: result.user?.id, 
+        email: result.user?.email,
+        organizationId: result.organization?.id,
+        organizationName: result.organization?.name
+      });
+      
+      // Sign in the user after successful creation
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      
+      if (signInError) {
+        console.warn('❌ AuthService: Auto sign-in after signup failed:', signInError.message);
+        return { data: null, error: 'Account created but sign-in failed. Please sign in manually.' };
+      }
+      
+      return { data: signInData.user, error: null };
     }
-
-    console.log('✅ AuthService: Sign up successful:', { 
-      userId: data.user?.id, 
-      email: data.user?.email,
-      fullName: data.user?.user_metadata?.full_name,
-      organizationId: data.user?.user_metadata?.organization_id,
-      role: data.user?.user_metadata?.role
-    });
-
-    return { data: data.user, error: null };
   } catch (error) {
     console.error('❌ AuthService: Unexpected error during sign up:', error);
     return { data: null, error: 'An unexpected error occurred during sign up' };
-  }
-}
-
-/**
- * Create a new organization for a user
- */
-export async function createOrganizationForUser(fullName: string): Promise<AuthResponse<string>> {
-  try {
-    console.log('🏢 AuthService: Creating new organization for user:', { fullName });
-    
-    // Extract organization name from user's full name
-    const organizationName = `${fullName}'s Organization`;
-    
-    const { data, error } = await supabase
-      .from('organizations')
-      .insert({
-        name: organizationName,
-        plan_type: 'starter',
-        settings: {}
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('❌ AuthService: Error creating organization:', error);
-      return { data: null, error: 'Failed to create organization' };
-    }
-
-    console.log('✅ AuthService: Organization created successfully:', { 
-      id: data.id, 
-      name: data.name 
-    });
-    return { data: data.id, error: null };
-  } catch (error) {
-    console.error('❌ AuthService: Unexpected error creating organization:', error);
-    return { data: null, error: 'An unexpected error occurred creating organization' };
   }
 }
 
