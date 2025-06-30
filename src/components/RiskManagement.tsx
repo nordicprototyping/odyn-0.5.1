@@ -146,6 +146,7 @@ const RiskManagement: React.FC = () => {
     
     setAiDetectionLoading(true);
     setAiDetectionError(null);
+    setAiDetectedRisks([]); // Initialize as empty array
     setShowAiDetectionModal(true);
     
     try {
@@ -175,11 +176,12 @@ const RiskManagement: React.FC = () => {
       const result = await aiService.detectRisks(profile.organization_id, aggregateData);
       
       // Update state with the results
-      setAiDetectedRisks(result.risks);
+      setAiDetectedRisks(result.risks || []); // Ensure it's always an array
       setAiDetectionSummary(result.summary);
     } catch (err) {
       console.error('Error detecting risks:', err);
       setAiDetectionError('Failed to detect risks. Please try again later.');
+      setAiDetectedRisks([]); // Ensure it's always an array even on error
     } finally {
       setAiDetectionLoading(false);
     }
