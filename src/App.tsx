@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 import LoginPage from './components/auth/LoginPage';
 import TwoFactorSetup from './components/auth/TwoFactorSetup';
 import MainLayout from './components/MainLayout';
@@ -25,75 +26,98 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/setup-2fa" element={<TwoFactorSetup />} />
+          <Route 
+            path="/setup-2fa" 
+            element={
+              <ProtectedRoute>
+                <TwoFactorSetup />
+              </ProtectedRoute>
+            } 
+          />
           <Route path="/join-organization" element={<JoinOrganizationPage />} />
           
           {/* Dashboard routes with layout */}
           <Route 
             path="/dashboard" 
             element={
-              <MainLayout>
-                <DashboardPage />
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <DashboardPage />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
           <Route 
             path="/dashboard/personnel" 
             element={
-              <MainLayout>
-                <PersonnelDashboard />
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <PersonnelDashboard />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
           <Route 
             path="/dashboard/incidents" 
             element={
-              <MainLayout>
-                <IncidentManagement />
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <IncidentManagement />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
           <Route 
             path="/dashboard/assets" 
             element={
-              <MainLayout>
-                <AssetSecurityDashboard />
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <AssetSecurityDashboard />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
           <Route 
             path="/dashboard/risks" 
             element={
-              <MainLayout>
-                <RiskManagement />
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <RiskManagement />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
           <Route 
             path="/dashboard/travel" 
             element={
-              <MainLayout>
-                <TravelSecurityManagement />
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <TravelSecurityManagement />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
           <Route 
             path="/dashboard/geopolitical" 
             element={
-              <MainLayout>
-                <div className="text-center py-12">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-4">Geopolitical Risk Dashboard</h2>
-                  <p className="text-gray-600">Coming soon...</p>
-                </div>
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <div className="text-center py-12">
+                    <h2 className="text-2xl font-bold text-gray-900 mb-4">Geopolitical Risk Dashboard</h2>
+                    <p className="text-gray-600">Coming soon...</p>
+                  </div>
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
           <Route 
             path="/dashboard/mitigations" 
             element={
-              <MainLayout>
-                <MitigationsPage />
-              </MainLayout>
+              <ProtectedRoute requiredPermission="mitigations.read">
+                <MainLayout>
+                  <MitigationsPage />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
           
@@ -101,9 +125,11 @@ function App() {
           <Route 
             path="/notifications" 
             element={
-              <MainLayout>
-                <NotificationsPage />
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <NotificationsPage />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
           
@@ -111,17 +137,21 @@ function App() {
           <Route 
             path="/risks" 
             element={
-              <MainLayout>
-                <RiskManagement />
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <RiskManagement />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
           <Route 
             path="/travel" 
             element={
-              <MainLayout>
-                <TravelSecurityManagement />
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <TravelSecurityManagement />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
           
@@ -129,34 +159,42 @@ function App() {
           <Route 
             path="/admin/users" 
             element={
-              <MainLayout>
-                <UserManagement />
-              </MainLayout>
-            }
+              <ProtectedRoute requiredPermission="users.read">
+                <MainLayout>
+                  <UserManagement />
+                </MainLayout>
+              </ProtectedRoute>
+            } 
           />
           <Route 
             path="/admin/organization-settings" 
             element={
-              <MainLayout>
-                <OrganizationSettings />
-              </MainLayout>
-            }
+              <ProtectedRoute requiredPermission="organizations.read">
+                <MainLayout>
+                  <OrganizationSettings />
+                </MainLayout>
+              </ProtectedRoute>
+            } 
           />
           <Route 
             path="/admin/organizations" 
             element={
-              <MainLayout>
-                <OrganizationManagement />
-              </MainLayout>
-            }
+              <ProtectedRoute requiredPermission="organizations.read">
+                <MainLayout>
+                  <OrganizationManagement />
+                </MainLayout>
+              </ProtectedRoute>
+            } 
           />
           <Route 
             path="/admin/audit-logs" 
             element={
-              <MainLayout>
-                <AuditLogViewer />
-              </MainLayout>
-            }
+              <ProtectedRoute requiredPermission="audit.read">
+                <MainLayout>
+                  <AuditLogViewer />
+                </MainLayout>
+              </ProtectedRoute>
+            } 
           />
           
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
