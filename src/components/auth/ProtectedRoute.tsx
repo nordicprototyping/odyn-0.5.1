@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Loader2 } from 'lucide-react';
@@ -18,6 +18,16 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 }) => {
   const { user, profile, loading, hasPermission, hasRole } = useAuth();
   const location = useLocation();
+
+  // Add a useEffect to log when loading state changes
+  useEffect(() => {
+    console.log('🔄 ProtectedRoute: Loading state changed:', { 
+      loading, 
+      hasUser: !!user, 
+      hasProfile: !!profile,
+      path: location.pathname
+    });
+  }, [loading, user, profile, location.pathname]);
 
   console.log('🛡️ ProtectedRoute:', { 
     path: location.pathname,
@@ -56,6 +66,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // If user exists but profile doesn't exist yet, we need to handle this case
+  // This could happen during signup when the profile creation is delayed
   if (!profile) {
     console.log('⚠️ ProtectedRoute: User exists but no profile found, redirecting to join organization', {
       userId: user.id,

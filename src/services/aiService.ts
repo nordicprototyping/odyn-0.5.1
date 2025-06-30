@@ -153,7 +153,16 @@ class AIService {
         userId
       });
       
-      return result as unknown as RiskDetectionResponse;
+      // Ensure we always return a valid response structure
+      return {
+        risks: result.risks || [],
+        summary: result.summary || {
+          total_risks_detected: 0,
+          high_priority_risks: 0,
+          confidence_score: 0
+        },
+        token_usage: result.token_usage || 0
+      };
     } catch (error) {
       console.error('Error detecting risks:', error);
       
@@ -251,6 +260,7 @@ class AIService {
       const accessToken = session?.access_token;
       
       if (!accessToken) {
+        console.warn('No access token available for risk scoring API call');
         throw new Error('No access token available');
       }
       
@@ -322,6 +332,8 @@ class AIService {
         request.data = enhancedData;
       }
       
+      console.log(`Calling risk-scoring function with type: ${request.type}`);
+      
       const response = await fetch(`${this.apiUrl}/risk-scoring`, {
         method: 'POST',
         headers: {
@@ -332,11 +344,13 @@ class AIService {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to score risk');
+        const errorText = await response.text();
+        console.error('Risk scoring API error:', response.status, errorText);
+        throw new Error(`API error: ${response.status} - ${errorText}`);
       }
       
-      return await response.json();
+      const result = await response.json();
+      return result;
     } catch (error) {
       console.error('Error calling risk scoring function:', error);
       

@@ -124,6 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setOrganization(fetchedOrganization);
           } else {
             console.log('⚠️ No organization_id in profile, cannot fetch organization');
+            setOrganization(null);
           }
           
           // Log authentication events only after profile is loaded
@@ -585,6 +586,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setOrganization(fetchedOrganization);
         } else {
           console.log('⚠️ useAuth: No organization_id in refreshed profile');
+          setOrganization(null);
         }
       } catch (error) {
         console.error('❌ useAuth: Error refreshing profile:', error);
