@@ -167,10 +167,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchUserProfile = async (userId: string, retryCount = 0): Promise<UserProfile | null> => {
     const maxRetries = 10; // Increased from 5 to 10
     const retryDelay = 800; // Increased from 500ms to 800ms
+    const queryTimeout = 5000; // 5 second timeout for the query
 
     console.log(`🔍 Fetching user profile (attempt ${retryCount + 1}/${maxRetries + 1})`, { userId });
 
     try {
+      // Create a promise that rejects after the timeout
+      const timeoutPromise = new Promise<null>((_, reject) => {
+        setTimeout(() => reject(new Error('Query timeout')), queryTimeout);
+      });
+
       // Wrap the Supabase query in a nested try-catch to catch any errors specifically from the query
       try {
         console.log('🔍 About to execute Supabase query for user profile:', { userId });
@@ -182,18 +188,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           filter: { field: 'user_id', value: userId }
         });
         
-        // Execute the query with explicit error handling
+        // Execute the query with explicit error handling and timeout
         let result;
         try {
-          result = await supabase
-            .from('user_profiles')
-            .select('*')
-            .eq('user_id', userId)
-            .single();
+          // Race the query against the timeout
+          result = await Promise.race([
+            supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('user_id', userId)
+              .single(),
+            timeoutPromise
+          ]);
           
           // Log the raw result to see exactly what's coming back
           console.log('Raw Supabase query result:', result);
         } catch (queryExecutionError) {
+          if (queryExecutionError.message === 'Query timeout') {
+            console.warn('⏱️ Supabase query timed out after', queryTimeout, 'ms');
+            
+            // If we haven't exceeded max retries, try again
+            if (retryCount < maxRetries) {
+              console.log(`⚠️ Query timed out, retrying... (attempt ${retryCount + 1}/${maxRetries})`);
+              await wait(retryDelay);
+              return fetchUserProfile(userId, retryCount + 1);
+            }
+            
+            console.error('❌ Maximum retries reached after query timeouts');
+            return null;
+          }
+          
           console.error('❌ Error executing Supabase query:', queryExecutionError);
           throw queryExecutionError;
         }
